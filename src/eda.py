@@ -14,9 +14,11 @@ def data_profiling(df, output_dir, output_filename, dashboard_title):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
+    df_cleaned = df.replace('--', np.nan)
+
     #Data profiling
     print("Running Profile Report...")
-    profile = ProfileReport(df, title=dashboard_title, explorative=True)
+    profile = ProfileReport(df_cleaned, title=dashboard_title, minimal=True)
     profile.to_file(output_path)
 
     #Open profiling
