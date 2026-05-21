@@ -1,0 +1,473 @@
+{% extends 'base.html' %}
+
+{% block title %}Predict - Customer Journey Prediction System{% endblock %}
+
+{% block extra_css %}
+<style>
+    .glass-panel {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(15px);
+        -webkit-backdrop-filter: blur(15px);
+        border: 1px solid rgba(0, 0, 0, 0.05);
+        border-radius: 1rem;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+    }
+
+    .form-label {
+        color: #334155;
+    }
+
+    .form-control,
+    .form-select {
+        background-color: #ffffff !important;
+        border: 1px solid rgba(0, 0, 0, 0.1) !important;
+        color: #1e293b !important;
+        padding: 0.75rem 1rem;
+        border-radius: 0.6rem;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .form-control:hover,
+    .form-select:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    }
+
+    .form-control::placeholder {
+        color: #94a3b8 !important;
+    }
+
+    .form-control:focus,
+    .form-select:focus {
+        background-color: #ffffff !important;
+        border-color: #a78bfa !important;
+        color: #1e293b !important;
+        box-shadow: 0 0 0 0.25rem rgba(124, 58, 237, 0.2) !important;
+        transform: translateY(-2px);
+    }
+
+    .form-select option {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+    }
+
+    .text-gradient {
+        background: var(--primary-gradient);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .btn-gradient {
+        background: var(--primary-gradient);
+        color: white;
+        border: none;
+        transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease;
+    }
+
+    .btn-gradient:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(79, 70, 229, 0.3);
+        color: white;
+    }
+
+    .btn-gradient:active {
+        transform: scale(0.97) translateY(0);
+        box-shadow: 0 4px 10px rgba(79, 70, 229, 0.2);
+    }
+
+    @keyframes spin {
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    .spin {
+        animation: spin 1s linear infinite;
+        display: inline-block;
+    }
+
+    .section-title {
+        color: #1e293b;
+        border-bottom: 2px solid rgba(0, 0, 0, 0.05);
+        padding-bottom: 12px;
+        margin-bottom: 24px;
+    }
+
+    .input-box {
+        background: rgba(0, 0, 0, 0.02);
+        border-radius: 0.5rem;
+        padding: 1.25rem;
+        border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    /* Progress bar animations */
+    @keyframes fillProgress {
+        0% {
+            max-width: 0;
+        }
+
+        100% {
+            max-width: 100%;
+        }
+    }
+
+    @keyframes pulseGlow {
+        0% {
+            box-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+        }
+
+        50% {
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+        }
+
+        100% {
+            box-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+        }
+    }
+
+    .progress-bar-animated-custom {
+        animation: fillProgress 1.2s cubic-bezier(0.4, 0, 0.2, 1) 0.6s forwards, pulseGlow 2s infinite, progress-bar-stripes 1s linear infinite !important;
+        background-size: 1rem 1rem;
+        max-width: 0;
+        /* Bắt đầu từ 0 để chờ delay */
+    }
+
+    .result-card {
+        animation: slideUp 0.5s ease-out forwards;
+    }
+
+    @keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-5 mb-5" style="max-width: 1200px;">
+    {% if error_message %}
+    <div class="alert alert-danger shadow-sm d-flex align-items-center mb-4" role="alert"
+        style="border-radius: 0.75rem; border: none; border-left: 5px solid #ef4444;">
+        <i class="bi bi-exclamation-triangle-fill fs-4 me-3 text-danger"></i>
+        <div>
+            <strong>Lỗi xác thực:</strong> {{ error_message }}
+        </div>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
+    <form method="POST" action="" id="journey-form">
+        {% csrf_token %}
+
+        <div class="row g-4">
+            <div class="col-lg-8 fade-in-up">
+                <div class="glass-panel p-4 h-100">
+                    <h3 class="section-title fw-bold"><i class="bi bi-person-fill text-gradient me-2"></i> 1. Thông tin
+                        khách hàng</h3>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3 input-box">
+                                <label class="form-label fw-semibold">Giới tính</label>
+                                <select name="GenderID" class="form-select" required>
+                                    <option value="" disabled selected>-- Chọn giới tính --</option>
+                                    {% for g in genders %}
+                                    <option value="{{ g.gender_code }}">{{ g.gender_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="mb-3 input-box">
+                                <label class="form-label fw-semibold">Tuổi</label>
+                                <input type="text" name="Age" class="form-control" placeholder="Nhập tuổi" required>
+                            </div>
+
+                            <div class="mb-3 input-box">
+                                <label class="form-label fw-semibold">Vùng</label>
+                                <select name="SPSS_Regio5" class="form-select" required>
+                                    <option value="" disabled selected>-- Chọn vùng miền --</option>
+                                    {% for r in regions %}
+                                    <option value="{{ r.code }}">{{ r.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="mb-3 input-box">
+                                <label class="form-label fw-semibold">Quy mô hộ gia đình</label>
+                                <input type="text" name="BAS_huishoudgrootte" class="form-control"
+                                    placeholder="Số người trong nhà" required>
+                            </div>
+
+                            <div class="mb-3 input-box">
+                                <label class="form-label fw-semibold">Nghề nghiệp</label>
+                                <select name="BAS_werkzaamheid_resp" class="form-select" required>
+                                    <option value="" disabled selected>-- Chọn nghề nghiệp --</option>
+                                    {% for j in jobs %}
+                                    <option value="{{ j.code }}">{{ j.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="mb-3 input-box">
+                                <label class="form-label fw-semibold">Tổng thu nhập</label>
+                                <select name="BAS_bruto_jaarinkomen" class="form-select" required>
+                                    <option value="" disabled selected>-- Chọn mức thu nhập năm --</option>
+                                    {% for i in incomes %}
+                                    <option value="{{ i.code }}">{{ i.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="mb-3 input-box">
+                                <label class="form-label fw-semibold">Số trẻ em</label>
+                                <input type="text" name="afg_kinderen_huishouden" class="form-control"
+                                    placeholder="Số lượng trẻ em" required>
+                            </div>
+
+                            <div class="mb-3 input-box">
+                                <label class="form-label fw-semibold">Tầng lớp xã hội</label>
+                                <select name="AFG_sk2015" class="form-select" required>
+                                    <option value="" disabled selected>-- Chọn tầng lớp xã hội --</option>
+                                    {% for s in social_classes %}
+                                    <option value="{{ s.code }}">{{ s.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="mb-3 input-box">
+                                <label class="form-label fw-semibold">Học vấn</label>
+                                <select name="BAS_voltooide_opleiding8_resp" class="form-select" required>
+                                    <option value="" disabled selected>-- Chọn trình độ học vấn --</option>
+                                    {% for e in educations %}
+                                    <option value="{{ e.code }}">{{ e.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="mb-3 input-box">
+                                <label class="form-label fw-semibold">Giai đoạn cuộc đời</label>
+                                <select name="SPSS_Lifestage" class="form-select" required>
+                                    <option value="" disabled selected>-- Chọn giai đoạn cuộc đời --</option>
+                                    {% for l in lifestages %}
+                                    <option value="{{ l.code }}">{{ l.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4 fade-in-up delay-200">
+                <div class="glass-panel p-4 h-100 d-flex flex-column justify-content-between">
+                    <div>
+                        <h3 class="section-title fw-bold"><i class="bi bi-geo-alt-fill text-success me-2"></i> 2. Khảo
+                            sát hành trình</h3>
+
+                        <div class="mb-4 input-box">
+                            <label class="form-label fw-bold text-info">Kênh tiếp cận trước kênh cuối</label>
+                            <select name="step_1_channel" class="form-select"
+                                style="border-color: rgba(14, 165, 233, 0.3);" required>
+                                <option value="" disabled selected>-- Chọn Kênh / Nền tảng --</option>
+                                {% for t in touchpoints %}
+                                <option value="{{ t.code }}">{{ t.code }}: {{ t.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-4 input-box">
+                            <label class="form-label fw-bold text-success">Kênh tương tác cuối cùng</label>
+                            <select name="step_2_channel" class="form-select"
+                                style="border-color: rgba(34, 197, 94, 0.3);" required>
+                                <option value="" disabled selected>-- Chọn Kênh / Nền tảng --</option>
+                                {% for t in touchpoints %}
+                                <option value="{{ t.code }}">{{ t.code }}: {{ t.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 mt-4">
+                        <button type="submit" id="btn-submit"
+                            class="btn btn-gradient flex-grow-1 btn-lg shadow-sm fw-bold">
+                            <i class="bi bi-lightning-charge-fill me-1" id="submit-icon"></i> <span id="submit-text">Dự
+                                báo</span>
+                        </button>
+                        <button type="button" id="btn-refresh" class="btn btn-outline-secondary btn-lg shadow-sm px-3"
+                            style="background: rgba(0,0,0,0.02); transition: all 0.2s ease;">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    {% if result %}
+    <div class="row mt-5 result-card">
+        <div class="col-12">
+            <div class="glass-panel" style="border-top: 4px solid #4f46e5;">
+                <div class="p-4 border-bottom"
+                    style="border-color: rgba(0,0,0,0.05)!important; background: rgba(0,0,0,0.02); border-radius: 1rem 1rem 0 0;">
+                    <h4 class="fw-bold mb-0 text-dark"><i class="bi bi-bar-chart-line-fill text-gradient me-2"></i> Kết
+                        quả phân tích hành trình hệ thống</h4>
+                </div>
+                <div class="p-4">
+
+                    <div class="row align-items-center mb-4 p-4 rounded"
+                        style="background: rgba(34, 197, 94, 0.05); border: 1px solid rgba(34, 197, 94, 0.1);">
+                        <div class="col-md-4 text-center border-end" style="border-color: rgba(0,0,0,0.05)!important;">
+                            <span class="d-block text-uppercase small fw-bold"
+                                style="color: #15803d; letter-spacing: 1px;">Phân nhóm khách hàng</span>
+                            <span class="badge fs-4 mt-2 px-4 py-2"
+                                style="background: rgba(34, 197, 94, 0.1); color: #166534; border: 1px solid rgba(34,197,94,0.2);">Cluster
+                                #3</span>
+                        </div>
+                        <div class="col-md-8 ps-4">
+                            <h5 class="fw-bold text-dark mb-2">Khách hàng Tiềm năng cao (High-Value Explorers)</h5>
+                            <p class="mb-0 text-muted">Nhóm khách hàng trẻ hoặc gia đình trẻ có mức thu nhập khá, thường
+                                xuyên tra cứu so sánh giá phòng và vé máy bay qua hệ thống Search/App trước khi chuyển
+                                đổi.</p>
+                        </div>
+                    </div>
+
+                    <hr class="my-4" style="border-color: rgba(0,0,0,0.1);">
+
+                    <h5 class="fw-bold mb-4 text-dark"><i class="bi bi-arrow-right-square-fill text-info me-2"></i> Top
+                        3 Steps Hành trình tiếp theo (Predicted Next Steps)</h5>
+
+                    <div class="vstack gap-3">
+                        <div class="p-4 rounded-3 position-relative"
+                            style="background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.05);">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <span class="fw-bold fs-5 text-dark">
+                                    <span class="badge me-2" style="background: var(--primary-gradient);">Top 1</span>
+                                    10: Touroperator / Travel agent Website Focus brand
+                                </span>
+                                <span class="badge fs-6 fw-bold prob-counter"
+                                    style="background: rgba(79, 70, 229, 0.1); color: #4338ca; border: 1px solid rgba(79, 70, 229, 0.2);"
+                                    data-target="78.5">Xác suất: 0%</span>
+                            </div>
+                            <div class="progress" style="height: 12px; background: rgba(0,0,0,0.05);">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated-custom"
+                                    role="progressbar" style="width: 78.5%; background-color: #6366f1;"></div>
+                            </div>
+                            <small class="d-block mt-2 text-muted"><i class="bi bi-info-circle me-1"></i> Khách hàng có
+                                xu hướng truy cập thẳng vào trang chủ thương hiệu định vị chính để kiểm tra ưu đãi
+                                tour.</small>
+                        </div>
+
+                        <div class="p-4 rounded-3 position-relative"
+                            style="background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.05);">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <span class="fw-bold fs-5 text-dark">
+                                    <span class="badge me-2" style="background: #10b981;">Top 2</span> 22: RETARGETING
+                                    (Quảng cáo bám đuổi)
+                                </span>
+                                <span class="badge fs-6 fw-bold prob-counter"
+                                    style="background: rgba(16, 185, 129, 0.1); color: #047857; border: 1px solid rgba(16,185,129,0.2);"
+                                    data-target="14.2">Xác suất: 0%</span>
+                            </div>
+                            <div class="progress" style="height: 12px; background: rgba(0,0,0,0.05);">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated-custom bg-success"
+                                    role="progressbar" style="width: 14.2%;"></div>
+                            </div>
+                            <small class="d-block mt-2 text-muted"><i class="bi bi-info-circle me-1"></i> Chịu tác động
+                                tái định vị từ các chiến dịch banner bám đuổi mạng xã hội sau khi thoát trang.</small>
+                        </div>
+
+                        <div class="p-4 rounded-3 position-relative"
+                            style="background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.05);">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <span class="fw-bold fs-5 text-dark">
+                                    <span class="badge me-2" style="background: #f59e0b; color: white;">Top 3</span> 13:
+                                    Flight tickets Website
+                                </span>
+                                <span class="badge fs-6 fw-bold prob-counter"
+                                    style="background: rgba(245, 158, 11, 0.1); color: #b45309; border: 1px solid rgba(245,158,11,0.2);"
+                                    data-target="7.3">Xác suất: 0%</span>
+                            </div>
+                            <div class="progress" style="height: 12px; background: rgba(0,0,0,0.05);">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated-custom bg-warning"
+                                    role="progressbar" style="width: 7.3%;"></div>
+                            </div>
+                            <small class="d-block mt-2 text-muted"><i class="bi bi-info-circle me-1"></i> Chuyển hướng
+                                sang khảo sát các trang trung gian đại lý vé máy bay để tối ưu chi phí di chuyển hành
+                                trình.</small>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const refreshBtn = document.getElementById("btn-refresh");
+        const journeyForm = document.getElementById("journey-form");
+        const submitBtn = document.getElementById("btn-submit");
+        const submitIcon = document.getElementById("submit-icon");
+        const submitText = document.getElementById("submit-text");
+        const resultCard = document.querySelector('.result-card');
+
+        // Automatically scroll to the result if it exists so the user sees the animations
+        if (resultCard) {
+            setTimeout(() => {
+                resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100); // slight delay ensures DOM is fully rendered before scrolling
+
+            // Animate probability numbers
+            const probCounters = document.querySelectorAll('.prob-counter');
+            if (probCounters.length > 0) {
+                setTimeout(() => {
+                    probCounters.forEach(counter => {
+                        const target = parseFloat(counter.getAttribute('data-target'));
+                        const duration = 1200; // 1.2s to match the bar animation
+                        const steps = 60; // 60 frames
+                        const stepTime = Math.abs(Math.floor(duration / steps));
+                        let current = 0;
+
+                        const timer = setInterval(() => {
+                            current += target / steps;
+                            if (current >= target) {
+                                current = target;
+                                clearInterval(timer);
+                            }
+                            counter.innerText = `Xác suất: ${current.toFixed(1)}%`;
+                        }, stepTime);
+                    });
+                }, 600); // Wait for the scroll and the delay to finish
+            }
+        }
+
+        if (refreshBtn && journeyForm) {
+            refreshBtn.addEventListener("click", function () {
+                // 1. Xóa toàn bộ dữ liệu đã chọn trên Form về mặc định
+                journeyForm.reset();
+
+                // 2. Chuyển hướng trang về trạng thái ban đầu (xóa bảng kết quả đang hiển thị)
+                window.location.href = window.location.pathname;
+            });
+
+            // Add Loading State Animation
+            journeyForm.addEventListener("submit", function () {
+                submitBtn.disabled = true;
+                submitBtn.style.opacity = '0.8';
+                submitIcon.className = "bi bi-arrow-repeat spin me-1";
+                submitText.innerText = "Đang xử lý...";
+            });
+        }
+    });
+</script>
+{% endblock %}
