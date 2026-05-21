@@ -50,7 +50,9 @@ import seaborn as sns
 #Asking window
 import tkinter as tk
 from tkinter import messagebox
+from sklearn.exceptions import UndefinedMetricWarning
 
+warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 warnings.filterwarnings('ignore', message='n_jobs value 1 overridden')
 
 def asking_window(title, message):
@@ -193,11 +195,11 @@ def train_multi_model(data_name, X, y):
 
     models = {
         "Gradient-Boosted": GradientBoostingClassifier(n_estimators=100, max_depth=5, random_state=42),
-        "Logistic Regression": LogisticRegression(max_iter=1000),
-        "Random Forest": RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42),
-        "Deep Learning": MLPClassifier(hidden_layer_sizes=(64, 32), max_iter=500, random_state=42),
+        "Logistic Regression": LogisticRegression(max_iter=1000, class_weight='balanced'),
+        "Random Forest": RandomForestClassifier(n_estimators=100, max_depth=10, class_weight='balanced', random_state=42),
+        "Deep Learning": MLPClassifier(hidden_layer_sizes=(64, 32), alpha=0.01, max_iter=1000, random_state=42),
         "Naïve Bayes": GaussianNB(),
-        "SGD Classifier": SGDClassifier(loss='hinge', random_state=42)
+        "SGD Classifier": SGDClassifier(loss='hinge',class_weight='balanced', random_state=42)
     }
 
     cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
@@ -225,7 +227,8 @@ def train_multi_model(data_name, X, y):
                 model, X, y,
                 cv=cv,
                 scoring=scoring_metrics,
-                error_score='raise'
+                error_score='raise',
+                n_jobs=-1
             )
             end_t = time.perf_counter()
             total_time = end_t - start_t
@@ -362,7 +365,6 @@ def preprocess_clusters(cluster_dict, target_col):
 
     return processed_results
 
-
 TravelDataJourneys_path = r'D:\MASTER\2.1. ADM\FINAL_PROJECT\CTMJ_ds\A_TravelDataJourneys.csv'
 TravelDataUsers_path = r'D:\MASTER\2.1. ADM\FINAL_PROJECT\CTMJ_ds\B_TravelDataUsers.csv'
 trigger_api = asking_window('Ask for crawling data', 'Do you want to get api data?')
@@ -390,7 +392,7 @@ else:
         TravelDataJourneys = dataset["A_TravelDataJourneys.csv"]
 
 print('All dataset are ready for use')
-
+#Export - có thể không run
 trigger_profiling = asking_window("Ask for profiling", "Do you want to get profiling data?")
 
 if trigger_profiling:
@@ -411,12 +413,10 @@ if trigger_profiling:
     print('Done profiling for TravelDataJourneys')
 else:
     print('Nothing to do!')
-
 #Preparing data for Clustering
 print('Preparing data for Clustering')
 dictionary = dictionary()
 touchpoint_mapping = dictionary.type_touch
-
 
 #Preparing data for Clustering
 user_data = TravelDataUsers[~TravelDataUsers['SPSS_Regio5'].isnull()]
@@ -445,7 +445,6 @@ user_data = pd.DataFrame(
     columns=user_data.columns,
     index=user_data.index
 )
-
 trigger_profiling = asking_window("Ask for profiling", "Do you want to get processed user profiling data?")
 if trigger_profiling:
     processed_user_output_filename = "Processed_user_data_profiling.html"
@@ -498,8 +497,7 @@ print(f"Số dòng sau khi nén: {len(journey_data_compressed)}")
 #journey_data info
 print(journey_data_compressed.info())
 print(journey_data_compressed.head())
-
-#Export journey data
+#Export journey data - có thể không chạy
 trigger_export_data = asking_window("Ask for exporting data",
                                     "Do you want to get processed journey data?")
 if trigger_export_data:
@@ -519,7 +517,6 @@ if trigger_profiling:
     data_profiling(user_data, output_profiling, processed_journey_output_filename, processed_journey_dashboard_title)
 else:
     print('Nothing to do!')
-
 #Cluster Modeling
 #Data scaling
 print('cluster Modeling')
@@ -541,8 +538,7 @@ X_scaled = user_data_preprocessor.fit_transform(user_data)
 #Lưu scaler
 clustering_preprocessor_file = os.path.join(output_clustering_scaler, 'user_data_preprocessor.pkl')
 joblib.dump(user_data_preprocessor, clustering_preprocessor_file)
-
-#Giảm chiều và trực quan hóa dữ liệu
+#Giảm chiều và trực quan hóa dữ liệu - có thể không chạy
 print('Giảm chiều và trực quan hóa dữ liệu')
 # PCA
 pca = PCA(n_components=2)
@@ -616,7 +612,7 @@ print(f"Dữ liệu sau khi lọc nhiễu: {len(X_clean)}")
 
 #Lưu model
 joblib.dump(dbscan, os.path.join(output_clustering_model, 'dbscan_clustering_model.pkl'))
-
+#Có thể không chạy
 #Model phân cụm
 #Tìm số k
 visualizer_all_metrics(X_clean)
@@ -628,7 +624,6 @@ df_final = run_clustering_benchmark_with_viz(X_clean)
 print("\n--- BẢNG SO SÁNH---")
 print(df_final.sort_values("Silhouette", ascending=False))
 df_final.to_excel(f'{output_predicting_result}/training_result.xlsx')
-
 #Final clustering model
 final_model = SpectralClustering(n_clusters=3, affinity='rbf', gamma=1.0, random_state=42)
 final_labels_clean = final_model.fit_predict(X_clean)
@@ -648,8 +643,7 @@ print("Thống kê nhãn")
 print(user_data['final_label'].value_counts())
 
 joblib.dump(final_model, os.path.join(output_clustering_model, 'spectral_clustering_model.pkl'))
-
-#Export labeled user_data profiling
+#Export labeled user_data profiling - có thể không chạy
 trigger_profiling = asking_window("Asking for profiling",
                                 "Do you want to get labeled user_data profiling?")
 if trigger_profiling:
@@ -660,7 +654,6 @@ if trigger_profiling:
     data_profiling(user_data, output_profiling, labeled_user_data_output_filename, labeled_user_data_dashboard_title)
 else:
     print('Nothing to do!')
-
 #Predict modeling
 #Preparing data
 print('Predict modeling')
@@ -695,8 +688,7 @@ final_modeling_df = df_final_steps.merge(
     on='UserID',
     how='inner'
 )
-
-#Export data profiling
+#Export data profiling - có thể không chạy
 trigger_profiling = asking_window("Asking for profiling",
                                 "Do you want to get processed journey data for modeling profiling?")
 if trigger_profiling:
@@ -708,7 +700,6 @@ if trigger_profiling:
                    processed_journey_data_for_modeling_dashboard_title)
 else:
     print('Nothing to do!')
-
 #Senario 1: Using all data, include cluster information to train predict model
 #Data scaling
 # Nhóm dùng RobustScaler
@@ -766,7 +757,7 @@ X_ad, y_ad = adasyn(X_filtered, y_filtered)
 data_variants = {
     "Original": (X_filtered, y_filtered),
     "SMOTE": (X_sm, y_sm),
-    "Tomek-Links": (X_tm, y_tm),
+    "Tomek": (X_tm, y_tm),
     "SMOTE-Tomek": (X_st, y_st),
     "ADASYN": (X_ad, y_ad)
 }
@@ -784,7 +775,6 @@ for variant in variant_list:
 
 s1_df_final =  pd.concat(s1_result, ignore_index=True)
 s1_df_final.to_excel(f'{output_predicting_result}/s1_predict_training_result.xlsx')
-
 #Senario 1 final model
 s1_model = GradientBoostingClassifier(n_estimators=100, max_depth=5, random_state=42)
 s1_X = data_variants['ADASYN'][0]
@@ -802,7 +792,8 @@ cv_results = cross_validate(
     s1_model, s1_X, s1_y,
     cv=cv,
     scoring=scoring_metrics,
-    error_score='raise'
+    error_score='raise',
+    n_jobs=-1
 )
 end_t = time.perf_counter()
 total_time = end_t - start_t
@@ -821,15 +812,50 @@ print(f"  + GradientBoostingClassifier training: Hoàn tất (Accuracy: {r['Accu
 joblib.dump(s1_model, os.path.join(output_predicting_model, 'GradientBoostingClassifier_model.pkl'))
 #-----------------------------------------------------------------------------------------
 #Senario 2: Using each cluster data, not include cluster information to train predict model
+from sklearn.model_selection import GridSearchCV
+
 cluster_raw_dict = split_data_by_clusters(final_modeling_df, 'final_label')
 final_processed_data = preprocess_clusters(cluster_dict=cluster_raw_dict, target_col='step1')
-
-#Training
+#Training and Tuning
 for cluster in cluster_list:
+    if cluster not in final_processed_data:
+        continue
+    
     result_list = []
+    # Find best model for the cluster first using default multi_model train
     for variant in variant_list:
-        X, y = final_processed_data[cluster][variant]
-        df = train_multi_model(f'{cluster}_{variant}', X, y)
-        result_list.append(df)
-    df_final = pd.concat(result_list, ignore_index=True)
-    df_final.to_excel(f'{output_predicting_result}/s2_{cluster}predict_training_result.xlsx')
+        if variant in final_processed_data[cluster]:
+            X, y = final_processed_data[cluster][variant]
+            df = train_multi_model(f'{cluster}_{variant}', X, y)
+            result_list.append(df)
+            
+    if result_list:
+        df_final = pd.concat(result_list, ignore_index=True)
+        df_final.to_excel(f'{output_predicting_result}/s2_{cluster}_predict_training_result.xlsx')
+        
+        # Improve accuracy: Hyperparameter tuning for the Gradient Boosting model on the ADASYN variant
+        if 'ADASYN' in final_processed_data[cluster]:
+            print(f"\n--- Tối ưu hóa siêu tham số cho {cluster} ---")
+            X_opt, y_opt = final_processed_data[cluster]['ADASYN']
+            
+            gb_model = GradientBoostingClassifier(random_state=42)
+            param_grid = {
+                'n_estimators': [100, 200],
+                'max_depth': [3, 5, 7],
+                'learning_rate': [0.01, 0.1]
+            }
+            
+            grid_search = GridSearchCV(estimator=gb_model, param_grid=param_grid, 
+                                       cv=StratifiedKFold(n_splits=3, shuffle=True, random_state=42), 
+                                       scoring='accuracy', n_jobs=-1)
+            
+            start_t = time.perf_counter()
+            grid_search.fit(X_opt, y_opt)
+            end_t = time.perf_counter()
+            
+            best_model = grid_search.best_estimator_
+            print(f"[{cluster}] Best Params: {grid_search.best_params_}")
+            print(f"[{cluster}] Best Accuracy: {grid_search.best_score_:.4f} (Time: {end_t - start_t:.2f}s)")
+            
+            # Save the optimized model for this cluster
+            joblib.dump(best_model, os.path.join(output_predicting_model, f's2_gb_optimized_model_{cluster}.pkl'))

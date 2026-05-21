@@ -16,7 +16,9 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-
+from . import views
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('', views.home_view, name='home'),             # Trang chủ giới thiệu hệ thống
+    path('predict/', views.predict_view, name='predict'), # Trang chứa form dự báo hành trình
 ]

@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'ctmj.apps.CtmjConfig',
 ]
 
 MIDDLEWARE = [
