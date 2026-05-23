@@ -85,6 +85,7 @@ class SPSS_Lifestage(models.Model):
 class type_touch(models.Model):
     code = models.IntegerField(primary_key=True, verbose_name="Mã touch point")
     name = models.CharField(max_length=255, verbose_name="Tên touch point")
+    description = models.TextField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.code}: {self.name}"
@@ -92,6 +93,18 @@ class type_touch(models.Model):
     class Meta:
         verbose_name = "12. Touch point"
         verbose_name_plural = "12. Touch point"
+
+class cluster_info(models.Model):
+    cluster_id = models.IntegerField(unique=True, primary_key=True)
+    name = models.CharField(max_length=255, verbose_name="Tên cụm", null=True, blank=True) # 🌟 Thêm dòng này
+    description = models.TextField(verbose_name="Mô tả cụm")
+
+    def __str__(self):
+        return f"Cluster #{self.cluster_id}: {self.name}" # Chạy mượt mà vì đã có self.name
+
+    class Meta:
+        verbose_name = "Cluster information"
+        verbose_name_plural = "Cluster information"
 
 admin.site.register(GenderID)
 admin.site.register(BAS_werkzaamheid_resp)
@@ -101,3 +114,4 @@ admin.site.register(AFG_sk2015)
 admin.site.register(BAS_voltooide_opleiding8_resp)
 admin.site.register(SPSS_Lifestage)
 admin.site.register(type_touch)
+admin.site.register(cluster_info)
