@@ -641,6 +641,7 @@ user_data.loc[mask_clean, 'final_label'] = final_model.labels_
 
 print("Thống kê nhãn")
 print(user_data['final_label'].value_counts())
+user_data.to_csv(os.path.join(output_clustering_result,'clustering_result.csv'))
 
 joblib.dump(final_model, os.path.join(output_clustering_model, 'spectral_clustering_model.pkl'))
 #Export labeled user_data profiling - có thể không chạy
@@ -807,9 +808,11 @@ r = {
     "F1-Score": np.mean(cv_results['test_f1']),
     "Time (s)": np.mean(cv_results['fit_time'])
 }
-
+s1_model.fit(s1_X, s1_y)
+model_filename = 'GradientBoostingClassifier_model.pkl'
 print(f"  + GradientBoostingClassifier training: Hoàn tất (Accuracy: {r['Accuracy']:.4f} | F1: {r['F1-Score']:.4f} | Time : {total_time} )")
-joblib.dump(s1_model, os.path.join(output_predicting_model, 'GradientBoostingClassifier_model.pkl'))
+joblib.dump(s1_model, os.path.join(output_predicting_model, model_filename))
+print(f"Đã lưu mô hình thành công tại: {model_filename}")
 #-----------------------------------------------------------------------------------------
 #Senario 2: Using each cluster data, not include cluster information to train predict model
 from sklearn.model_selection import GridSearchCV

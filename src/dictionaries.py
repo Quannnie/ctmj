@@ -93,3 +93,19 @@ class dictionary():
             9: "housewife/houseman/other",
             97: "don't know",
             99: "not applicable"}
+
+        self.GenderID ={
+            1: "Male",
+            2: "Female"
+        }
+
+        self.BAS_bruto_jaarinkomen = {
+            1: "< €12.900 (minimum)",
+            2: "€12.900 <= 27.000 (below average)",
+            3: "€27.000 <= 33.500 (almost average)",
+            4: "€33.500 <= 40.000 (average)",
+            5: "€40.000 <= 67.000 (between 1 and 2 times average)",
+            6: "€67.000 <= 79.900 (2 times average)",
+            7: "> 79.900 (above 2 times average)",
+            8: "Don't know / Don't want to say"
+            }
