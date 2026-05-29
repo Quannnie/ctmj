@@ -514,7 +514,7 @@ if trigger_profiling:
     processed_journey_dashboard_title = "Processed Travel Journey Dataset Profiling"
 
     # Run
-    data_profiling(user_data, output_profiling, processed_journey_output_filename, processed_journey_dashboard_title)
+    data_profiling(journey_data_compressed, output_profiling, processed_journey_output_filename, processed_journey_dashboard_title)
 else:
     print('Nothing to do!')
 #Cluster Modeling
@@ -697,7 +697,7 @@ if trigger_profiling:
     processed_journey_data_for_modeling_dashboard_title = "Processed journey data for modeling Profiling"
 
     # Run
-    data_profiling(user_data, output_profiling, processed_journey_data_for_modeling_output_filename,
+    data_profiling(final_modeling_df, output_profiling, processed_journey_data_for_modeling_output_filename,
                    processed_journey_data_for_modeling_dashboard_title)
 else:
     print('Nothing to do!')
@@ -835,30 +835,3 @@ for cluster in cluster_list:
     if result_list:
         df_final = pd.concat(result_list, ignore_index=True)
         df_final.to_excel(f'{output_predicting_result}/s2_{cluster}_predict_training_result.xlsx')
-        
-        # Improve accuracy: Hyperparameter tuning for the Gradient Boosting model on the ADASYN variant
-        if 'ADASYN' in final_processed_data[cluster]:
-            print(f"\n--- Tối ưu hóa siêu tham số cho {cluster} ---")
-            X_opt, y_opt = final_processed_data[cluster]['ADASYN']
-            
-            gb_model = GradientBoostingClassifier(random_state=42)
-            param_grid = {
-                'n_estimators': [100, 200],
-                'max_depth': [3, 5, 7],
-                'learning_rate': [0.01, 0.1]
-            }
-            
-            grid_search = GridSearchCV(estimator=gb_model, param_grid=param_grid, 
-                                       cv=StratifiedKFold(n_splits=3, shuffle=True, random_state=42), 
-                                       scoring='accuracy', n_jobs=-1)
-            
-            start_t = time.perf_counter()
-            grid_search.fit(X_opt, y_opt)
-            end_t = time.perf_counter()
-            
-            best_model = grid_search.best_estimator_
-            print(f"[{cluster}] Best Params: {grid_search.best_params_}")
-            print(f"[{cluster}] Best Accuracy: {grid_search.best_score_:.4f} (Time: {end_t - start_t:.2f}s)")
-            
-            # Save the optimized model for this cluster
-            joblib.dump(best_model, os.path.join(output_predicting_model, f's2_gb_optimized_model_{cluster}.pkl'))
