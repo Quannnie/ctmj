@@ -295,6 +295,46 @@ class ModelRegistry:
         logger.debug("Loading %s from %s", key, path)
         return joblib.load(path)
 
+    def validate_hf_repo(self) -> str:
+        """Check the configured repository id before it is used to build a path.
+
+        A Hub repository is addressed as ``{owner}/{repo}``. A single segment
+        has no owner, and the path would then resolve against whatever namespace
+        the token happens to belong to — so the wrong repository is read
+        without any error at the point of use. Caught here instead, where the
+        message can name the setting.
+        """
+        repo = (self._hf_repo or "").strip().strip("/")
+        parts = [p for p in repo.split("/") if p]
+        if len(parts) < 2:
+            raise ValueError(
+                f"CTMJ_HF_REPO must be '{'{owner}'}/{'{repo}'}', got {self._hf_repo!r}. "
+                "A bare repository name has no namespace and would resolve "
+                "against the token owner's account instead."
+            )
+        return repo
+
+    def hf_path(self, filename: str) -> str:
+        """The path ``HfFileSystem`` expects for one artefact.
+
+        ``HfFileSystem.resolve_path`` takes the **first two** path segments as
+        the repository namespace and treats the rest as the file path within it::
+
+            repo_id_with_namespace = "/".join(path.split("/")[:2])
+
+        so the correct form is ``{owner}/{repo}/{filename}``.
+
+        This previously built ``buckets/{owner}/{repo}/{filename}``. That prefix
+        is a Google Cloud Storage convention that does not apply here, and it
+        made the first two segments ``buckets/{owner}`` — a repository that does
+        not exist. The result was a ``FileNotFoundError: repository not found``
+        for every artefact, with a valid token and a correct repository name,
+        which reads exactly like "the token is wrong". Verified against
+        ``huggingface_hub`` 0.36: ``buckets/openai-community/gpt2/config.json``
+        raises while ``openai-community/gpt2/config.json`` resolves.
+        """
+        return f"{self.validate_hf_repo()}/{filename}"
+
     def _load_hf(self, key: str, filename: Path) -> Any:
         import joblib
 
@@ -312,8 +352,8 @@ class ModelRegistry:
                 "HF_TOKEN is not set; cannot read the private model repository."
             )
 
-        remote = f"buckets/{self._hf_repo}/{filename}"
-        logger.debug("Loading %s from hub://%s", key, remote)
+        remote = self.hf_path(str(filename))
+        logger.debug("Loading %s from hf://%s", key, remote)
         fs = fsspec.filesystem("hf", token=token)
         with fs.open(remote, "rb") as handle:
             return joblib.load(handle)

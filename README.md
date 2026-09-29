@@ -77,6 +77,17 @@ back to the Hub if `HF_TOKEN` is set, otherwise runs with predictions disabled
 and explains why in the UI. **There is no interactive prompt anywhere** — see
 [Why model loading changed](#why-model-loading-changed).
 
+`CTMJ_HF_REPO` must be `{owner}/{repo}`. A bare name has no namespace and would
+resolve against whichever account the token belongs to; the registry rejects it
+at startup rather than letting a 404 discover it.
+
+> **Rotate any HF token pasted into a chat, terminal log or issue.** `HF_TOKEN`
+> is read from the environment and is never written to the repository, but a
+> token shared in plain text should be treated as compromised. Check a token
+> without exposing it: `curl -H "Authorization: Bearer $HF_TOKEN"
+> https://huggingface.co/api/whoami-v2` — an expired one answers
+> `{"error":"User Access Token \"...\" is expired"}`.
+
 ### Model artefacts
 
 Five joblib files, named by `CTMJ["MODEL_FILES"]` in `ctmj/settings.py`:
@@ -90,7 +101,29 @@ Five joblib files, named by `CTMJ["MODEL_FILES"]` in `ctmj/settings.py`:
 | `gradient_boosting` | `GradientBoostingClassifier_model.pkl` | scaled prediction matrix |
 
 The column contract lives in `ctmj/services/formdata.py` and must match
-`src/main.py`. Changing a name there without retraining breaks inference.
+`src/cjps_train/config.py`. Changing a name there without retraining breaks
+inference — which is why a contract test asserts the two lists are identical,
+and why a training run re-reads its own artefacts and drives them through
+`predict()` before reporting success.
+
+#### Reading artefacts from the Hub
+
+`HfFileSystem` takes the **first two** path segments as the repository
+namespace and the rest as the file path within it
+(`repo_id_with_namespace = "/".join(path.split("/")[:2])`). So the path is
+`{owner}/{repo}/{filename}`.
+
+This previously built `buckets/{owner}/{repo}/{filename}`. `buckets/` is a
+Google Cloud Storage convention; on the Hub it shifted the namespace by one
+segment, so the loader requested a repository literally named
+`buckets/quanghuynh0122` and every artefact failed with
+`FileNotFoundError: repository not found` — a message that points at the token
+or the repository name, neither of which was wrong. Verified against
+`huggingface_hub` 0.36: `buckets/openai-community/gpt2/config.json` raises
+while `openai-community/gpt2/config.json` resolves.
+`ctmj/tests/test_hf_path.py` pins the format without needing a token or the
+network; set `CTMJ_TEST_HF_NETWORK=1` to add a live resolution check against a
+public repository.
 
 ### Operations
 
