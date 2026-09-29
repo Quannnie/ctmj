@@ -187,30 +187,81 @@ class SourceResolutionTestCase(_TempDirTestCase):
 
 
 class HubLoadTestCase(_TempDirTestCase):
-    """The Hub path needs no network in tests — fsspec is mocked out."""
+    """The Hub path needs no network in tests - the bucket client is mocked."""
 
-    def test_loads_via_fsspec_with_a_token(self):
+    def _payload(self, tag: str = "from-hub") -> bytes:
         import io
 
         buffer = io.BytesIO()
-        joblib.dump({"tag": "from-hub"}, buffer)
-        payload = buffer.getvalue()
+        joblib.dump({"tag": tag}, buffer)
+        return buffer.getvalue()
 
-        class _FakeFS:
-            def open(self, path, mode="rb"):
-                return io.BytesIO(payload)
+    def test_loads_every_artefact_through_the_bucket_client(self):
+        """All five come from the same bucket, one download each."""
+        payload = self._payload()
+        seen: list[str] = []
+
+        def fake_fetch(bucket, filename, token=None, timeout=None):
+            seen.append(filename)
+            return payload
 
         registry = ModelRegistry(_config("hf", self.model_dir))
         with mock.patch.dict(os.environ, {"HF_TOKEN": "hf_fake"}, clear=False):
-            with mock.patch("fsspec.filesystem", return_value=_FakeFS()):
+            with mock.patch("ctmj.services.hub.fetch_artefact", side_effect=fake_fetch):
                 status = registry.load_sync()
+
         self.assertIs(status.state, LoadState.READY)
         self.assertEqual(registry.get("dbscan"), {"tag": "from-hub"})
+        self.assertEqual(len(seen), 5)
 
-    def test_without_a_token_it_fails_rather_than_hanging(self):
+    def test_anonymous_read_is_allowed(self):
+        """The bucket is public, so a token must not be a precondition.
+
+        The old loader refused without ``HF_TOKEN`` and reported "models
+        unavailable". On a correctly configured deployment that was a false
+        alarm: the read would have succeeded anonymously.
+        """
+        payload = self._payload("anonymous")
         registry = ModelRegistry(_config("hf", self.model_dir))
-        env = {k: v for k, v in os.environ.items() if k not in {"HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"}}
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in {"HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"}
+        }
         with mock.patch.dict(os.environ, env, clear=True):
-            status = registry.load_sync()
+            with mock.patch(
+                "ctmj.services.hub.fetch_artefact", return_value=payload
+            ) as fetch:
+                status = registry.load_sync()
+
+        self.assertIs(status.state, LoadState.READY)
+        self.assertEqual(registry.get("dbscan"), {"tag": "anonymous"})
+        self.assertIsNone(fetch.call_args.kwargs.get("token"))
+
+    def test_a_download_failure_names_the_artefact_and_the_reason(self):
+        """``missing`` says which file; ``errors`` says why.
+
+        Both are needed and they answer different questions. A 403, a file that
+        is not in the bucket, and an artefact pickled against a different
+        scikit-learn all land in ``missing``, and the remedy differs in each
+        case.
+        """
+        from ctmj.services import hub
+
+        def fake_fetch(bucket, filename, token=None, timeout=None):
+            if filename.startswith("dbscan"):
+                raise hub.HubError("not in bucket")
+            return self._payload()
+
+        registry = ModelRegistry(_config("hf", self.model_dir))
+        with mock.patch.dict(os.environ, {"HF_TOKEN": "hf_fake"}, clear=False):
+            with mock.patch("ctmj.services.hub.fetch_artefact", side_effect=fake_fetch):
+                status = registry.load_sync()
+
         self.assertIs(status.state, LoadState.FAILED)
-        self.assertFalse(registry.ready())
+        # The filename list stays bare: that is what an operator supplies.
+        self.assertEqual(status.missing, ["dbscan.pkl"])
+        # The reason is alongside it, keyed by the same filename.
+        self.assertIn("dbscan.pkl", status.errors)
+        self.assertIn("not in bucket", status.errors["dbscan.pkl"])
+        self.assertEqual(set(status.as_dict()["errors"]), {"dbscan.pkl"})

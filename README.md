@@ -40,8 +40,18 @@ Rebuild the genuine artefacts from `src/main.py`.
 python manage.py test
 ```
 
-The suite needs no network access and no model artefacts: it fits small real
-scikit-learn estimators as fixtures (`ctmj/tests/factories.py`).
+294 tests, about 90 seconds. No network access and no model artefacts required:
+the app tests fit small real scikit-learn estimators as fixtures
+(`ctmj/tests/factories.py`) and the training tests generate their own source
+CSVs (`src/cjps_train/fixtures.py`).
+
+The default `manage.py test` found only 143 of those. `src/` has no
+`__init__.py`, so it imports as a namespace package and `unittest`'s directory
+discovery skips it — quietly, because the modules themselves import fine.
+`ctmj/testrunner.py` now discovers both roots explicitly and **fails** if either
+collects nothing, so a moved or renamed test directory cannot present as a
+passing run. To run one root: `python manage.py test ctmj` or
+`python manage.py test src`.
 
 ---
 
@@ -58,14 +68,25 @@ it to `.env` for local overrides.
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | empty | e.g. `https://cjps.example.com` |
 | `CTMJ_MODEL_SOURCE` | `auto` | `auto` \| `local` \| `hf` \| `none` |
 | `CTMJ_MODEL_DIR` | `./models` | Local artefact directory |
-| `CTMJ_HF_REPO` | `quanghuynh0122/datamining_models` | Hugging Face repository |
-| `HF_TOKEN` | empty | Read token, only for `CTMJ_MODEL_SOURCE=hf` |
+| `CTMJ_HF_REPO` | `quanghuynh0122/datamining_models` | Hugging Face **storage bucket** |
+| `HF_TOKEN` | empty | Optional. The bucket is public; a token is only needed for a private one |
 | `DJANGO_LOG_LEVEL` | `INFO` | Application log level |
 
 `auto` prefers `./models` when all five artefacts are present, otherwise falls
 back to the Hub if `HF_TOKEN` is set, otherwise runs with predictions disabled
 and explains why in the UI. **There is no interactive prompt anywhere** — see
 [Why model loading changed](#why-model-loading-changed).
+
+`CTMJ_HF_REPO` must be `{owner}/{bucket}`. A bare name has no owner and the URL
+would name the wrong thing; the registry rejects it at startup rather than
+letting a 404 discover it.
+
+> **Rotate any HF token pasted into a chat, terminal log or issue.** `HF_TOKEN`
+> is read from the environment and is never written to the repository, but a
+> token shared in plain text should be treated as compromised. Check a token
+> without exposing it: `curl -H "Authorization: Bearer $HF_TOKEN"
+> https://huggingface.co/api/whoami-v2` — an expired one answers
+> `{"error":"User Access Token \"...\" is expired"}`.
 
 ### Model artefacts
 
@@ -80,7 +101,73 @@ Five joblib files, named by `CTMJ["MODEL_FILES"]` in `ctmj/settings.py`:
 | `gradient_boosting` | `GradientBoostingClassifier_model.pkl` | scaled prediction matrix |
 
 The column contract lives in `ctmj/services/formdata.py` and must match
-`src/main.py`. Changing a name there without retraining breaks inference.
+`src/cjps_train/config.py`. Changing a name there without retraining breaks
+inference — which is why a contract test asserts the two lists are identical,
+and why a training run re-reads its own artefacts and drives them through
+`predict()` before reporting success.
+
+#### Reading artefacts from the Hub
+
+The artefacts live in a Hugging Face **storage bucket**,
+`buckets/quanghuynh0122/datamining_models`. That is a different surface from a
+model repository, and it changes what works:
+
+* `huggingface_hub` cannot address it. Its id validator accepts
+  `repo_name` or `namespace/repo_name`, there is no `repo_type` that fits, and
+  `HfApi.repo_info` raises `HFValidationError` before making a request. The
+  same applies to `HfFileSystem`, so the old `fsspec.filesystem("hf")` path
+  could not have read a bucket under any circumstances.
+* `/api/models/...`, `/api/datasets/...` and `/api/spaces/...` all answer 404
+  for a bucket, which reads exactly like "it does not exist".
+
+`ctmj/services/hub.py` speaks the bucket's own scheme:
+
+```
+list       GET /api/buckets/{bucket}/tree
+download   GET /buckets/{bucket}/resolve/{filename}
+```
+
+Note there is **no revision segment**. A repository serves
+`/resolve/{revision}/{path}`; a bucket serves `/resolve/{path}`, so probing the
+repository shape 404s for a file that is present. The bucket is public, so
+`HF_TOKEN` is optional and its absence is not an error.
+
+> A correction worth recording, because it cost a debugging cycle. The
+> `buckets/` segment was twice taken for a Google Cloud Storage convention and
+> "fixed" away. It is the bucket namespace. The failure was attributed to the
+> token, because `FileNotFoundError: repository not found` is what a bad token
+> looks like — and it is also what a wrong address looks like. The bucket was
+> public throughout. `status.missing` now carries the reason for each failure in
+> a separate `errors` field, so a 403, a missing file and a scikit-learn version
+> clash stop being indistinguishable.
+
+Set `CTMJ_TEST_HF_NETWORK=1` to run the three opt-in tests in
+`ctmj/tests/test_hf_path.py` that hit the live bucket.
+
+#### The trained artefacts and scikit-learn
+
+The bucket holds the original research run: 9 files, 471 MB, including four
+`s2_predicting_preprocessor_cluster_*.pkl` — the per-segment preprocessors that
+`src/main.py` fitted and that the pooled design in `src/cjps_train/` replaced.
+`spectral_clustering_model.pkl` is 465 MB on its own, because
+`SpectralClustering` persists its n-by-n affinity matrix (7 807 rows here).
+
+On scikit-learn 1.9, **four of the five artefacts load and the classifier does
+not**:
+
+```
+AttributeError: Can't get attribute '__pyx_unpickle_CyHalfMultinomialLoss'
+on <module 'sklearn._loss.loss'>
+```
+
+The pickle was written by a Cython build that emitted
+`__pyx_unpickle_*` symbols; scikit-learn 1.9 emits none. Registering a
+top-level `_loss` alias in `sys.modules` bridges the module name but not the
+missing symbol, so this is not shimmable — the artefact has to be either loaded
+under the scikit-learn version that wrote it, or retrained. The preprocessors
+load with an `InconsistentVersionWarning` (written by 1.8.0) and work; the
+spectral model has no `components_`, which is the scikit-learn 1.6 removal that
+`ctmj/services/predictor.py` already compensates for.
 
 ### Operations
 
@@ -111,8 +198,14 @@ ctmj/
     seed_reference_data.py   re-sync lookup tables
     build_demo_models.py     generate offline demo artefacts
   migrations/0011_seed_reference_data.py   fresh clone -> migrate -> works
-  tests/                 121 tests, no network, no artefacts required
-src/                     research pipeline (EDA, preprocessing, training)
+  testrunner.py        discovers both test roots; fails if one is empty
+  tests/               152 tests, no network, no artefacts required
+src/
+  cjps_train/          the production training pipeline (see below)
+  main.py              the original research script, kept for reference
+  pre_processing.py    SMOTE / Tomek / ADASYN, fold-safe wrappers
+  eda.py, dataset/     profiling helpers and the Figshare loader
+  tests/               142 tests for everything under src/
 static/css/main.css      design tokens + components, no framework
 static/js/app.js         progressive enhancement only
 templates/               base, home, predict, 404, partials/
@@ -202,12 +295,77 @@ so it is covered there.
 
 ---
 
-## Data
+## Training
 
-All customer data in this repository is synthetic. `src/` contains the research
-pipeline (EDA, preprocessing, model benchmarking, training); its outputs under
-`resources/profiling/` are git-ignored because they are regenerable and large.
+`src/cjps_train/` is the production training pipeline. `src/main.py` is the
+original research script and is kept for reference; it still contains its
+`print()` calls and interactive `asking_window()` prompts.
 
-The research code retains some `print()` calls and interactive
-`asking_window()` prompts. It is a notebook-driven pipeline and is not wired into
-the web app.
+```bash
+# Validate the data without training anything
+python -m src.cjps_train.cli --data-dir data --dry-run
+
+# Full run: trains, writes the five artefacts, verifies them
+python -m src.cjps_train.cli --data-dir data --force
+```
+
+Point it at the source CSVs with `--data-dir`, or set `CJPS_DATA_DIR`
+(`CJPS_JOURNEYS_CSV` / `CJPS_USERS_CSV` override individually). It writes to
+`models/` and `resources/training/training_manifest.json`; both are
+configurable. Every run writes a manifest recording the seed, library versions,
+data row counts, the full clustering diagnostic, the whole benchmark table, and
+the holdout score.
+
+### What changed, and why it matters
+
+The numbers the original pipeline reported could not be trusted. Four defects,
+each of which produces a model that trains without complaint while measuring
+the wrong thing:
+
+**Resampling ran before the cross-validation split.** SMOTE and ADASYN were
+applied to the whole dataset, and folds were drawn from the resampled result.
+SMOTE synthesises a minority point by interpolating between a real sample and one
+of its k nearest same-class neighbours — so once the whole dataset had been
+resampled, a validation row was a candidate neighbour, and the model trained on
+a synthetic point derived from the row it was about to be scored against. Every
+reported F1 was measuring memorisation. Resampling now happens on the training
+slice of each fold, and a test asserts the sampler never sees a validation row.
+
+**There was no holdout set.** Nothing was ever scored on data that had not
+already influenced a decision. A stratified split is now taken before model
+selection and scored exactly once, at the end.
+
+**The benchmark was decorative.** Six models across five resamplers were fitted
+and a table printed, then the code fitted a hardcoded
+`GradientBoostingClassifier(n_estimators=100, max_depth=5)` against a hardcoded
+`n_clusters=3` regardless of what the table said. The roster is now evaluated,
+ranked, and the winner is what gets written — with the numbers that put it
+there in the manifest. `eps` and the cluster count are likewise chosen by
+searching, not assumed.
+
+**A failing model vanished.** `cross_validate` was wrapped in a `try/except`
+that printed and continued, so a model that could not fit simply disappeared
+from the results. A missing row reads as "we did not think it was worth trying",
+which is a very different claim from "it broke". Failures are now recorded with
+their error and sorted last.
+
+Also fixed along the way: `--` was being read as a string rather than as missing
+data, which defeated every numeric operation downstream; rows with partial
+profiles were dropped outright, making the KNN imputer a no-op while the report
+claimed the data was clean; the fitted imputer was discarded instead of saved, so
+training and serving could never agree; `SGDClassifier(loss='hinge')` was
+benchmarked for a task that requires probabilities; `MLPClassifier` ran
+unregularised with convergence warnings globally suppressed; output paths were
+relative to the working directory; input paths were hardcoded to one machine.
+
+### Reading the manifest
+
+`resources/training/training_manifest.json` is the record of a run. The
+`notes` array is the part to read first — it flags a segmentation with fewer
+than two segments, a `k` sitting at the edge of the searched range, a smallest
+segment too thin for stable probabilities, and a cross-validated score more than
+0.15 above the holdout. A run is not finished until `verification.ok` is true:
+the artefacts are re-read from disk and driven through
+`ctmj.services.predictor.predict` before the run reports success, so a
+training/inference contract mismatch surfaces as a training failure rather than
+as a broken form.
