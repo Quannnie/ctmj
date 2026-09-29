@@ -3,18 +3,13 @@
 {% comment %}
   Content strategy
 
-  The previous hero was a centred badge + centred h1 + centred paragraph +
-  two centred pill buttons, which is the most recognisable AI-generated layout
-  in use. This one is built as an editorial spread instead:
+  Avoids the centred badge + centred h1 + centred paragraph + two centred pill
+  buttons layout that reads as machine-generated. Instead: an asymmetric
+  editorial split, a rule-run section head, a fact strip before the prose, and
+  stacked use-case rows rather than three equal cards.
 
-    * An asymmetric two-column split — wide narrative column, narrow rail.
-    * A left-aligned display heading with an italic accent clause.
-    * A fact strip (numbers) before the prose sections, because readers want
-      the scale of the system before they want its features.
-    * Stacked editorial rows with a rule-run section head, replacing three
-      equal feature cards.
-    * The pipeline described once, in a shared partial, so the home page and
-      the prediction page can never disagree about how the system works.
+  The pipeline is described once, in a shared partial, so this page and the
+  prediction page can never disagree about how the system works.
 {% endcomment %}
 
 {% block content %}
@@ -22,12 +17,12 @@
 <section class="page" style="padding-block: var(--s-8) var(--s-7);">
   <div class="split split--wide-first">
 
-    <div class="rise" style="--i: 0;">
+    <div data-reveal>
       <p class="eyebrow">Phân cụm · Dự báo · Tối ưu tiếp cận</p>
 
       <h1 style="margin-bottom: var(--s-5);">
         Biết khách hàng sẽ chạm vào<br>
-        <em style="font-style: italic; color: var(--accent);">điểm tiếp theo nào.</em>
+        <em style="font-style: italic; color: var(--primary-600);">điểm tiếp theo nào.</em>
       </h1>
 
       <p class="lede">
@@ -37,32 +32,40 @@
         được ngay.
       </p>
 
-      <div class="actions" style="margin-top: var(--s-5);">
-        <a class="btn btn--accent" href="{% url 'predict' %}">Chạy một dự báo</a>
-        <a class="btn btn--ghost" href="#pipeline">Cách hoạt động</a>
+      <div class="actions" style="margin-top: var(--s-6);">
+        <a class="btn" href="{% url 'predict' %}">
+          Chạy một dự báo
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+               stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2.5 8h11M9 3.5 13.5 8 9 12.5"/>
+          </svg>
+        </a>
+        <a class="btn btn--secondary" href="#pipeline">Cách hoạt động</a>
       </div>
     </div>
 
-    <div class="rise" style="--i: 1; align-self: end;">
-      <hr class="rule" style="margin-bottom: var(--s-4);">
-      <p class="eyebrow" style="margin-bottom: var(--s-4);">Hai tầng xử lý</p>
+    <div data-reveal style="--i: 1; align-self: end;">
+      <div style="background: var(--surface); border: 1px solid var(--ink-200);
+                  border-radius: var(--r-lg); padding: var(--s-5); box-shadow: var(--shadow-sm);">
+        <p class="eyebrow" style="margin-bottom: var(--s-4);">Hai tầng xử lý</p>
 
-      <ol class="steps">
-        <li>
-          <span class="steps__index" aria-hidden="true">01</span>
-          <div>
-            <span class="steps__title">Phân cụm</span>
-            <span class="steps__body">DBSCAN loại nhiễu, Spectral Clustering gán phân khúc.</span>
-          </div>
-        </li>
-        <li>
-          <span class="steps__index" aria-hidden="true">02</span>
-          <div>
-            <span class="steps__title">Dự báo</span>
-            <span class="steps__body">Gradient Boosting xếp hạng {{ touchpoint_count|default:"20" }} điểm chạm.</span>
-          </div>
-        </li>
-      </ol>
+        <ol class="steps">
+          <li>
+            <span class="steps__index" aria-hidden="true">01</span>
+            <div>
+              <span class="steps__title">Phân cụm</span>
+              <span class="steps__body">DBSCAN loại nhiễu, Spectral Clustering gán phân khúc.</span>
+            </div>
+          </li>
+          <li>
+            <span class="steps__index" aria-hidden="true">02</span>
+            <div>
+              <span class="steps__title">Dự báo</span>
+              <span class="steps__body">Gradient Boosting xếp hạng {{ touchpoint_count|default:"20" }} điểm chạm.</span>
+            </div>
+          </li>
+        </ol>
+      </div>
     </div>
   </div>
 </section>
@@ -71,7 +74,7 @@
 
 {% comment %} Fact strip: readers want the scale of the system before its features. {% endcomment %}
 <section class="page" style="padding-block: var(--s-6);">
-  <dl class="stat-row" style="margin: 0;">
+  <dl class="stat-row" style="margin: 0;" data-reveal>
     <div class="stat">
       <dd class="stat__value">{{ touchpoint_count|default:"—" }}</dd>
       <dt class="stat__label">điểm chạm trong từ điển dự báo</dt>
@@ -93,7 +96,7 @@
 
 {% comment %} Use cases: stacked editorial rows, deliberately not a 3-card grid. {% endcomment %}
 <section class="page" style="padding-block: var(--s-6) var(--s-7);">
-  <div class="section-head">
+  <div class="section-head" data-reveal>
     <h2 class="section-head__title">Dùng kết quả để làm gì</h2>
     <p class="section-head__body muted">
       Mỗi dự báo trả về một phân khúc và ba điểm chạm kèm xác suất. Dưới đây
@@ -103,7 +106,7 @@
 
   <div class="stack-lg">
 
-    <article class="panel">
+    <article class="panel panel--hover" data-reveal>
       <div class="panel__body">
         <div class="split split--reverse">
           <div>
@@ -128,7 +131,7 @@
       </div>
     </article>
 
-    <article class="panel">
+    <article class="panel panel--hover" data-reveal>
       <div class="panel__body">
         <div class="split split--reverse">
           <div>
@@ -152,7 +155,7 @@
       </div>
     </article>
 
-    <article class="panel">
+    <article class="panel panel--hover" data-reveal>
       <div class="panel__body">
         <div class="split split--reverse">
           <div>
@@ -182,7 +185,7 @@
 
 {% comment %} Pipeline. Single source of truth, shared with the prediction page. {% endcomment %}
 <section class="page" id="pipeline" style="padding-block: var(--s-7);">
-  <div class="section-head">
+  <div class="section-head" data-reveal>
     <h2 class="section-head__title">Quy trình xử lý</h2>
     <p class="section-head__body muted">
       Bốn bước, hai mô hình, một đầu ra duy nhất. Toàn bộ chạy trong bộ nhớ, không
@@ -190,7 +193,7 @@
     </p>
   </div>
 
-  <div class="panel">
+  <div class="panel" data-reveal>
     <div class="panel__body">
       {% include 'partials/pipeline_table.html' %}
     </div>
@@ -201,7 +204,13 @@
 {% if registry_status %}
 <section class="page" style="padding-bottom: var(--s-7);">
   <div class="notice {% if registry_status.ready %}notice--ok{% elif registry_status.state.value == 'loading' %}notice--info{% else %}notice--warn{% endif %}">
-    <span aria-hidden="true" style="font-weight: 700;">{% if registry_status.ready %}&#10003;{% else %}!{% endif %}</span>
+    <span aria-hidden="true" style="font-weight: 700;">
+      {% if registry_status.ready %}
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 8.5 3.5 3.5 7.5-8"/></svg>
+      {% else %}
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4.5v4"/><circle cx="8" cy="11.5" r=".9" fill="currentColor" stroke="none"/></svg>
+      {% endif %}
+    </span>
     <div>
       <p class="notice__title">Trạng thái mô hình</p>
       <p class="notice__body">{{ registry_status.message }}</p>

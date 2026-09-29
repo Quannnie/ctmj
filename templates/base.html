@@ -25,6 +25,11 @@
 
   <link rel="stylesheet" href="{% static 'css/main.css' %}">
   {% block extra_css %}{% endblock %}
+  {% comment %}
+    Remove the no-js marker before first paint, so reveal-on-scroll elements
+    are never briefly invisible when JS is enabled.
+  {% endcomment %}
+  <script>document.documentElement.classList.remove('no-js');</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Bỏ qua tới nội dung chính</a>

@@ -110,12 +110,18 @@
         </div>
       </fieldset>
     </div>
-    {# Actions. #}
+    {% comment %}
+      Actions. The submit button keeps its width when loading: the label dims
+      instead of vanishing, so the row never reflows on click.
+    {% endcomment %}
     <div class="actions" style="margin-top: var(--s-5);">
-      <button type="submit" class="btn btn--accent" data-submit>
-        <span data-spinner hidden aria-hidden="true"
-              style="width: 0.85em; height: 0.85em; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; display: inline-block; animation: ctmj-spin 0.7s linear infinite;"></span>
+      <button type="submit" class="btn" data-submit>
+        <span class="spinner" data-spinner hidden aria-hidden="true"></span>
         <span data-submit-label>Dự báo bước tiếp theo</span>
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2.5 8h11M9 3.5 13.5 8 9 12.5"/>
+        </svg>
       </button>
 
       <a class="btn btn--quiet" href="{% url 'predict' %}" data-reset>Xóa và làm lại</a>
@@ -147,7 +153,7 @@
             <div>
               <p class="eyebrow" style="margin-bottom: var(--s-2);">Phân khúc được gán</p>
               <div class="inline-pair">
-                <span class="badge {% if prediction.is_noise %}badge--warn{% else %}badge--accent{% endif %}">
+                <span class="badge {% if prediction.is_noise %}badge--warn{% else %}badge--primary{% endif %}">
                   Cụm {{ prediction.cluster_id }}
                 </span>
                 <strong style="font-size: var(--step-1); color: var(--ink-900);">
