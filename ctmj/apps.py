@@ -38,11 +38,44 @@ class CtmjConfig(AppConfig):
         if cls.registry is None:
             cls.registry = ModelRegistry()
 
+        # Registered before the deferral check below, and deliberately so.
+        # Invalidation has nothing to do with model loading: any process that
+        # writes a lookup row — a test, a management command, a worker — needs
+        # it, and every one of those paths defers loading. Registering it after
+        # the early return meant a stale label survived in exactly the processes
+        # that could most easily have caused it.
+        self._register_cache_invalidation()
+
         if self._should_defer_loading():
             logger.debug("Skipping model loading for this process (%s).", self._process_kind())
             return
 
         cls.registry.start_background_load()
+
+    @staticmethod
+    def _register_cache_invalidation() -> None:
+        """Drop the reference-data cache whenever a lookup row changes.
+
+        The lookup tables are cached in memory (see
+        :mod:`ctmj.services.lookups`), and ``/admin/`` is a live editor for
+        them. Without this, correcting a touchpoint's name in the admin would
+        have no effect until the cache expired — and the person who just made
+        the correction is the one most likely to go and check it worked.
+
+        ``bulk_create`` and ``queryset.update`` bypass these signals, so the
+        management commands that use them invalidate explicitly.
+        """
+        from django.db.models.signals import post_delete, post_save
+
+        from ctmj import models
+        from ctmj.services.lookups import invalidate_all
+
+        def _invalidate(sender, **kwargs):  # noqa: ANN001, ARG001
+            invalidate_all()
+
+        for model in models.REFERENCE_MODELS:
+            post_save.connect(_invalidate, sender=model, dispatch_uid=f"ctmj.cache.save.{model.__name__}")
+            post_delete.connect(_invalidate, sender=model, dispatch_uid=f"ctmj.cache.delete.{model.__name__}")
 
     # Commands that never serve HTTP requests. Starting a background download
     # for these would make `migrate` and `test` hang on a cold model cache.

@@ -128,30 +128,39 @@ def _as_int(raw: str) -> int | None:
 
 
 def _accepting_map(name: str, model: Any, pk: str) -> dict[str, int]:
-    """Build a case-insensitive ``token -> code`` map for a lookup table.
+    """Case-insensitive ``token -> code`` map for a lookup table.
 
     Touchpoint names are long, so the UI offers them through a datalist. This
     lets a user submit either ``20`` or ``Email`` and get the same result,
     instead of a validation error for a value they can plainly see listed.
+
+    Read through :mod:`ctmj.services.lookups`; the argument is kept so the shape
+    of the original function survives for anything that calls it directly.
     """
     if name not in NAME_ACCEPTING_FIELDS:
         return {}
-    return {
-        str(obj.name).strip().casefold(): getattr(obj, pk)
-        for obj in model.objects.all()
-    }
+    from ctmj.services import lookups
+
+    return lookups.name_to_code(name)
 
 
 def validate_prediction_form(post: Mapping[str, str]) -> ValidationResult:
-    """Validate a POST payload against the lookup tables and numeric bounds."""
+    """Validate a POST payload against the lookup tables and numeric bounds.
+
+    The lookup tables are read through the cache in
+    :mod:`ctmj.services.lookups`. They hold 91 rows between them and are
+    static, yet this function used to issue 11 queries per call on the critical
+    path of the one request that has to feel instant.
+    """
+    from ctmj.services import lookups
+
     result = ValidationResult()
 
     valid_codes: dict[str, set[int]] = {}
     by_name: dict[str, dict[str, int]] = {}
     for name, model in CHOICE_FIELDS.items():
-        pk = CHOICE_PK[name]
-        valid_codes[name] = set(model.objects.values_list(pk, flat=True))
-        by_name[name] = _accepting_map(name, model, pk)
+        valid_codes[name] = lookups.valid_codes(name)
+        by_name[name] = _accepting_map(name, model, CHOICE_PK[name])
 
     for name in ALL_FIELDS:
         raw = (post.get(name) or "").strip()

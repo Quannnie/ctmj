@@ -291,30 +291,30 @@ def predict(registry: ModelRegistry, validated: formdata.ValidationResult) -> Pr
     distribution.sort(key=lambda item: item[1], reverse=True)
     top = distribution[:TOP_N]
 
-    from ctmj.models import cluster_info, type_touch
+    # Reference data comes from the cache rather than a filtered query. A
+    # prediction used to issue two queries here — one for the segment, one for
+    # the touchpoint names — to fetch two rows out of tables that are static.
+    # The whole tables are 20 and 3 rows, so fetching them costs the same round
+    # trip as fetching nothing and reading from memory.
+    from ctmj.services.lookups import cluster_details, touchpoint_details
 
-    cluster = cluster_info.objects.filter(cluster_id=cluster_id).first()
-    cluster_name = (cluster.name if cluster and cluster.name else "") or (
-        f"Nhóm #{cluster_id}"
-    )
-    cluster_description = (cluster.description if cluster else "") or (
+    cluster = cluster_details(cluster_id)
+    cluster_name = cluster.get("name") or f"Nhóm #{cluster_id}"
+    cluster_description = cluster.get("description") or (
         "Chưa có mô tả cho nhóm phân cụm này."
     )
 
-    touch_map = {
-        obj.code: obj
-        for obj in type_touch.objects.filter(code__in=[code for code, _ in top])
-    }
+    touch_map = touchpoint_details(code for code, _ in top)
 
     channels: list[ChannelPrediction] = []
     for code, prob in top:
-        obj = touch_map.get(code)
+        detail = touch_map.get(int(code), {})
         channels.append(
             ChannelPrediction(
                 channel_id=code,
                 probability=prob,
-                name=(obj.name if obj else f"Kênh #{code}"),
-                description=(obj.description if obj else "")
+                name=detail.get("name") or f"Kênh #{code}",
+                description=detail.get("description")
                 or "Chưa có mô tả cho điểm chạm này.",
             )
         )

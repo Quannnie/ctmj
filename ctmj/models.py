@@ -141,6 +141,26 @@ class cluster_info(models.Model):
         return f"Cluster #{self.cluster_id}: {self.name or '—'}"
 
 
+#: Every table whose contents are cached in memory by
+#: :mod:`ctmj.services.lookups` and are editable in ``/admin/``. A change to any
+#: of them invalidates the cache, so the list is the single place that has to
+#: be kept in step with "which tables are static reference data".
+#:
+#: ``PredictionRun`` is deliberately absent: it is an append-only audit log and
+#: caching it would be pointless.
+REFERENCE_MODELS = (
+    GenderID,
+    BAS_werkzaamheid_resp,
+    SPSS_Regio5,
+    BAS_bruto_jaarinkomen,
+    AFG_sk2015,
+    BAS_voltooide_opleiding8_resp,
+    SPSS_Lifestage,
+    type_touch,
+    cluster_info,
+)
+
+
 class PredictionRun(models.Model):
     """Audit trail of prediction requests.
 

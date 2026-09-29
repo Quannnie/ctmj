@@ -216,6 +216,52 @@ fresh clone needs nothing but `migrate`. `db.sqlite3` is git-ignored.
 
 ---
 
+## Performance
+
+### Reference data is cached
+
+The lookup tables hold 91 rows between them and are populated once, by a data
+migration or `manage.py seed_reference_data`. They were nevertheless re-read on
+every request: `validate_prediction_form` issued 11 queries and the dropdown
+context another 8, all for the same static rows, on the critical path of the
+one request that has to feel instant.
+
+Measured end to end through the WSGI handler, 30 requests per case, rotating the
+cache before every request in the "before" column to reproduce the old
+behaviour exactly:
+
+| Request | Before | After | |
+|---|---|---|---|
+| `GET /` | 1.42 ms, 1 query | 1.02 ms, 0 queries | −29% |
+| `GET /predict/` | 6.59 ms, 8 queries | 4.35 ms, 0 queries | −34% |
+| `POST /predict/` | 9.71 ms, 19 queries | 4.61 ms, 0 queries | **−53%, 2.1×** |
+
+Validation and dropdown population together: 4.462 ms → 0.333 ms.
+
+`ctmj/services/lookups.py` owns the cache. Invalidation is a version integer
+rotated on write, so it is O(1) regardless of how much is cached, and it is
+triggered by `post_save` / `post_delete` on the reference models — an edit in
+`/admin/` takes effect on the next request. `seed_reference_data` invalidates
+explicitly, because `bulk_create` and `queryset.update` bypass signals.
+
+A cache is only worth having if it is correct, so a failure of the cache
+backend degrades to reading the database rather than raising: losing the cache
+costs queries, raising costs the request. The signalled invalidation is
+registered *before* the model-loading deferral check in `apps.py`, because every
+process that can write a lookup row — a test, a management command, a worker —
+is one that defers loading.
+
+### What is left
+
+The remaining 4.3 ms on `GET /predict/` is template rendering: eight dropdowns
+of `<option>` elements, plus the form. There are no database queries left on the
+request path. A profile of `POST /predict/` shows `predict_view` accounting for
+essentially all of it, with no single dominant callee — the cost is spread
+across Django's template engine rather than concentrated anywhere worth
+attacking.
+
+---
+
 ## Design
 
 Editorial data-journalism: warm paper ground, one oxblood accent, Fraunces

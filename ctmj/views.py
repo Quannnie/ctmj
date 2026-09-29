@@ -15,16 +15,6 @@ from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
 from ctmj.apps import CtmjConfig
-from ctmj.models import (
-    AFG_sk2015,
-    BAS_bruto_jaarinkomen,
-    BAS_werkzaamheid_resp,
-    BAS_voltooide_opleiding8_resp,
-    GenderID,
-    SPSS_Lifestage,
-    SPSS_Regio5,
-    type_touch,
-)
 from ctmj.services import formdata, predictor, reference_data
 
 logger = logging.getLogger("ctmj.views")
@@ -34,17 +24,17 @@ def _registry():
     return CtmjConfig.registry
 
 
-def _options(model: Any, pk: str, label: str) -> list[dict[str, Any]]:
-    """Normalise a lookup queryset into uniform ``{value, label}`` pairs.
+def _options(field: str) -> list[dict[str, Any]]:
+    """Normalise a lookup table into uniform ``{value, label}`` pairs.
 
     The templates then never need to know the real model or which attribute
-    holds the code, so a column rename touches the view instead of every
-    template.
+    holds the code, so a column rename touches one place instead of every
+    template. Read through the cache: this used to be eight queries per
+    request, re-fetching the same 91 static rows each time.
     """
-    return [
-        {"value": getattr(obj, pk), "label": getattr(obj, label)}
-        for obj in model.objects.order_by(pk)
-    ]
+    from ctmj.services import lookups
+
+    return lookups.options(field)
 
 
 def _lookup_context() -> dict[str, list[dict[str, Any]]]:
@@ -54,26 +44,28 @@ def _lookup_context() -> dict[str, list[dict[str, Any]]]:
     would silently change the meaning of an already-submitted value.
     """
     return {
-        "genders": _options(GenderID, "gender_code", "gender_name"),
-        "jobs": _options(BAS_werkzaamheid_resp, "code", "name"),
-        "regions": _options(SPSS_Regio5, "code", "name"),
-        "incomes": _options(BAS_bruto_jaarinkomen, "code", "name"),
-        "social_classes": _options(AFG_sk2015, "code", "name"),
-        "educations": _options(BAS_voltooide_opleiding8_resp, "code", "name"),
-        "lifestages": _options(SPSS_Lifestage, "code", "name"),
-        "touchpoints": _options(type_touch, "code", "name"),
+        "genders": _options("GenderID"),
+        "jobs": _options("BAS_werkzaamheid_resp"),
+        "regions": _options("SPSS_Regio5"),
+        "incomes": _options("BAS_bruto_jaarinkomen"),
+        "social_classes": _options("AFG_sk2015"),
+        "educations": _options("BAS_voltooide_opleiding8_resp"),
+        "lifestages": _options("SPSS_Lifestage"),
+        "touchpoints": _options("type_touch"),
     }
 
 
 @require_GET
 def home_view(request: HttpRequest) -> HttpResponse:
     """Landing page with an honest summary of the model pipeline."""
+    from ctmj.services import lookups
+
     registry = _registry()
     return render(
         request,
         "home.html",
         {
-            "touchpoint_count": type_touch.objects.count(),
+            "touchpoint_count": lookups.touchpoint_count(),
             "cluster_count": max(len(reference_data.CLUSTERS) - 1, 0),
             "registry_status": registry.status if registry else None,
         },

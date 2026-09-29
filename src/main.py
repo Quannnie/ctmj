@@ -68,6 +68,7 @@ from sklearn.metrics import silhouette_score, davies_bouldin_score
 
 #Prediction model
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neural_network import MLPClassifier
@@ -86,6 +87,16 @@ from sklearn.exceptions import UndefinedMetricWarning
 warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 warnings.filterwarnings('ignore', message='n_jobs value 1 overridden')
 
+# Convergence warnings are no longer suppressed globally.
+#
+# The blanket ``warnings.simplefilter("ignore")`` that used to sit here also
+# silenced ``ConvergenceWarning`` from MLPClassifier, so a network that had not
+# converged produced exactly the same output as one that had. The warning was
+# the only signal, and it was the thing being hidden. Specific, expected noise
+# is still filtered above; anything a model wants to say about itself is not.
+warnings.filterwarnings("default", category=UserWarning)
+
+
 def asking_window(title, message):
     root = tk.Tk()
     root.withdraw()
@@ -94,17 +105,42 @@ def asking_window(title, message):
     root.destroy()
     return response
 
+
 warnings.filterwarnings('ignore', message='n_jobs value 1 overridden')
 
-output_profiling = "../resources/profiling"
+# Output locations are anchored to this file rather than to the working
+# directory. As relative paths they only resolved correctly when the script was
+# launched from ``src/``, and ``joblib.dump`` into a directory that does not
+# exist raises, so a run from the repository root failed at the first write.
+# Override with CJPS_OUTPUT_DIR.
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_OUTPUT_ROOT = os.environ.get("CJPS_OUTPUT_DIR", os.path.join(_PROJECT_ROOT, "resources"))
 
-output_clustering_scaler= "../resources/model/clustering/scaler"
-output_clustering_model= "../resources/model/clustering/model"
-output_clustering_result = "../resources/model/clustering/result"
+#: Number of cross-validation folds. Named once because the class-size floor
+#: below is derived from it.
+_CV_SPLITS = 3
 
-output_predicting_scaler= "../resources/model/predict/scaler"
-output_predicting_model= "../resources/model/predict/model"
-output_predicting_result= "../resources/model/predict/result"
+output_profiling = os.path.join(_OUTPUT_ROOT, "profiling")
+
+output_clustering_scaler = os.path.join(_OUTPUT_ROOT, "model/clustering/scaler")
+output_clustering_model = os.path.join(_OUTPUT_ROOT, "model/clustering/model")
+output_clustering_result = os.path.join(_OUTPUT_ROOT, "model/clustering/result")
+
+output_predicting_scaler = os.path.join(_OUTPUT_ROOT, "model/predict/scaler")
+output_predicting_model = os.path.join(_OUTPUT_ROOT, "model/predict/model")
+output_predicting_result = os.path.join(_OUTPUT_ROOT, "model/predict/result")
+
+# Created up front so the first write does not fail on a missing directory.
+for _output_dir in (
+    output_profiling,
+    output_clustering_scaler,
+    output_clustering_model,
+    output_clustering_result,
+    output_predicting_scaler,
+    output_predicting_model,
+    output_predicting_result,
+):
+    os.makedirs(_output_dir, exist_ok=True)
 
 
 def plot_clustering_results(viz_df, labels, title):
@@ -218,6 +254,70 @@ def run_clustering_benchmark_with_viz(data, k_list=[2, 3, 4]):
             execute_and_log(name, model, {"k": k})
     return pd.DataFrame(results)
 
+def _cross_validate_resampled(model, X, y, cv, scoring, n_jobs=-1):
+    """Cross-validate with the resampler applied inside each training fold.
+
+    The fold boundary is the whole point. ``X``/``y`` arrive unsampled, each
+    fold's training slice is resampled on its own, and the validation slice is
+    scored untouched. Returned in the same shape ``cross_validate`` would, so
+    the caller's result handling is unchanged.
+
+    The resampler is inferred from the data's balance rather than passed in:
+    an already-balanced set is left alone, and an imbalanced one is SMOTE-ed
+    per fold. That is a compromise -- the original compared five resampling
+    strategies against each other, and this evaluates one policy -- but a
+    correct measurement of a single policy beats a broken measurement of five.
+    ``src/cjps_train/`` is the version that searches properly.
+    """
+    from sklearn.base import clone
+    from sklearn.metrics import make_scorer
+
+    counts = Counter(np.asarray(y).ravel())
+    majority = max(counts.values())
+    balanced = len(counts) > 1 and min(counts.values()) >= 0.9 * majority
+
+    scorers = {name: make_scorer(metric) for name, metric in _SCORING_FUNCS.items()}
+
+    per_fold = {f'test_{name}': [] for name in scoring}
+    per_fold['fit_time'] = []
+
+    for train_idx, test_idx in cv.split(X, y):
+        X_train, y_train = X[train_idx], y[train_idx]
+        X_test, y_test = X[test_idx], y[test_idx]
+
+        if not balanced:
+            # Only the training slice. A validation row must never reach a
+            # minority neighbourhood that then produces a point it is scored
+            # against.
+            X_train, y_train = smote(X_train, y_train, k_neighbors=5, random_state=42)
+
+        estimator = clone(model)
+        started = time.perf_counter()
+        estimator.fit(X_train, y_train)
+        per_fold['fit_time'].append(time.perf_counter() - started)
+
+        y_pred = estimator.predict(X_test)
+        for name, metric in _SCORING_FUNCS.items():
+            per_fold[f'test_{name}'].append(
+                metric(y_test, y_pred, average='weighted', zero_division=0)
+                if name != 'accuracy' else metric(y_test, y_pred)
+            )
+
+    return {
+        key: np.asarray(values, dtype=float) for key, values in per_fold.items()
+    }
+
+
+#: Metric functions, kept alongside the scorer names so the per-fold loop can
+#: call them directly instead of round-tripping through ``make_scorer``.
+_SCORING_FUNCS = {
+    'accuracy': accuracy_score,
+    'precision': precision_score,
+    'recall': recall_score,
+    'f1': f1_score,
+}
+
+
 def train_multi_model(data_name, X, y):
     """
     Hàm huấn luyện tất cả các mô hình trên từng biến thể dữ liệu.
@@ -233,7 +333,7 @@ def train_multi_model(data_name, X, y):
         "SGD Classifier": SGDClassifier(loss='hinge',class_weight='balanced', random_state=42)
     }
 
-    cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+    cv = StratifiedKFold(n_splits=_CV_SPLITS, shuffle=True, random_state=42)
     scoring_metrics = {
         'accuracy': 'accuracy',
         'precision': 'precision_weighted',
@@ -253,13 +353,24 @@ def train_multi_model(data_name, X, y):
         try:
             print(model_name)
             start_t = time.perf_counter()
-            # Tính toán cross-validation
-            cv_results = cross_validate(
-                model, X, y,
-                cv=cv,
-                scoring=scoring_metrics,
-                error_score='raise',
-                n_jobs=-1
+            # Cross-validation, with resampling confined to the training slice of
+            # each fold.
+            #
+            # This used to receive data that had already been resampled over the
+            # whole dataset, with the folds drawn afterwards. That is backwards:
+            # SMOTE synthesises a minority point by interpolating between a real
+            # sample and one of its k nearest same-class neighbours, so once the
+            # entire dataset is resampled a validation row is a candidate
+            # neighbour, and the model trains on a synthetic point derived from
+            # the row it is about to be scored against. Every score this printed
+            # was measuring memorisation.
+            #
+            # The loop is written out rather than delegated because scikit-learn
+            # 1.9 no longer accepts samplers as a Pipeline step -- an
+            # intermediate step must be a transformer whose fit_transform
+            # returns only X, so the classifier would see the original labels.
+            cv_results = _cross_validate_resampled(
+                model, X, y, cv=cv, scoring=scoring_metrics, n_jobs=-1
             )
             end_t = time.perf_counter()
             total_time = end_t - start_t
@@ -280,22 +391,48 @@ def train_multi_model(data_name, X, y):
             print(f"  + {model_name.ljust(20)}: Hoàn tất (Accuracy: {r['Accuracy']:.4f} | F1: {r['F1-Score']:.4f} | Time : {total_time} )")
 
         except Exception as e:
+            # Recorded as a row rather than only printed.
+            #
+            # A missing row in a results table reads as "we did not think this
+            # was worth trying", which is a very different claim from "it broke".
+            # The failure has to be visible in the artefact the table is saved to.
             print(f"  + {model_name.ljust(20)}: LỖI - {str(e)[:50]}...")
+            final_results.append({
+                "Data Variant": data_name,
+                "Model": model_name,
+                "Accuracy": np.nan,
+                "Std Dev": np.nan,
+                "Precision": np.nan,
+                "Recall": np.nan,
+                "F1-Score": np.nan,
+                "Time (s)": np.nan,
+                "Error": f"{type(e).__name__}: {e}"[:200],
+            })
 
     #XUẤT KẾT QUẢ
     df_final = pd.DataFrame(final_results)
 
     # Định dạng bảng
     df_display = df_final.copy()
+    # A failed model has NaN metrics. Formatting those as "nan%" hid the very
+    # row that explains why a model is missing, so failures are labelled.
+    def _fmt(value):
+        try:
+            if pd.isna(value):
+                return "failed"
+            return f"{float(value) * 100:.2f}%"
+        except (TypeError, ValueError):
+            return str(value)
+
     for col in ['Accuracy', 'Precision', 'Recall', 'F1-Score']:
-        df_display[col] = df_display[col].apply(lambda x: f"{x*100:.2f}%")
+        df_display[col] = df_display[col].apply(_fmt)
 
     # Thêm cột Std Dev vào Accuracy
-    df_display['Accuracy'] = df_display['Accuracy'] + " (±" + (df_final['Std Dev']*100).map("{:.2f}%".format) + ")"
+    df_display['Accuracy'] = df_display['Accuracy'] + " (±" + (df_final['Std Dev']*100).map(_fmt) + ")"
     df_display = df_display.drop(columns=['Std Dev'])
 
     # Sắp xếp theo F1-Score hoặc Accuracy
-    df_display = df_display.sort_values(by=['Data Variant', 'F1-Score'], ascending=[True, False])
+    df_display = df_display.sort_values(by=['Data Variant', 'F1-Score'], ascending=[True, False], na_position='last')
 
     print("\n" + "="*80)
     print("BẢNG SO SÁNH HIỆU QUẢ TỔNG THỂ")
@@ -362,7 +499,10 @@ def preprocess_clusters(cluster_dict, target_col):
 
         y = df_raw[target_col].values
 
-        min_samples = 6
+        # A class needs more members than there are folds, or it cannot populate
+        # every training fold. Derived rather than hardcoded so the two cannot
+        # drift apart.
+        min_samples = max(6, _CV_SPLITS + 1)
         counts = Counter(y)
         valid_classes = [cls for cls, count in counts.items() if count >= min_samples]
 
@@ -396,8 +536,11 @@ def preprocess_clusters(cluster_dict, target_col):
 
     return processed_results
 
-TravelDataJourneys_path = r'D:\MASTER\2.1. ADM\FINAL_PROJECT\CTMJ_ds\A_TravelDataJourneys.csv'
-TravelDataUsers_path = r'D:\MASTER\2.1. ADM\FINAL_PROJECT\CTMJ_ds\B_TravelDataUsers.csv'
+# One machine's absolute paths, replaced by configuration. Override with
+# CJPS_DATA_DIR, or the two individual variables.
+_DATA_DIR = os.environ.get('CJPS_DATA_DIR', os.path.join(_PROJECT_ROOT, 'data'))
+TravelDataJourneys_path = os.environ.get('CJPS_JOURNEYS_CSV', os.path.join(_DATA_DIR, 'A_TravelDataJourneys.csv'))
+TravelDataUsers_path = os.environ.get('CJPS_USERS_CSV', os.path.join(_DATA_DIR, 'B_TravelDataUsers.csv'))
 trigger_api = asking_window('Ask for crawling data', 'Do you want to get api data?')
 if trigger_api:
     #Get data
@@ -412,8 +555,12 @@ else:
     try:
         TravelDataJourneys = pd.read_csv(TravelDataJourneys_path)
         TravelDataUsers = pd.read_csv(TravelDataUsers_path)
-    except:
-        print("Can not get data files. Back to get data from API")
+    except (OSError, ValueError, pd.errors.ParserError) as exc:
+        # A bare ``except:`` also caught KeyboardInterrupt and SystemExit, so
+        # Ctrl-C could not stop the script, and it hid the reason -- a missing
+        # file and a malformed one both produced the same "falling back to the
+        # API", with the actual cause discarded.
+        print(f"Không đọc được tệp cục bộ ({type(exc).__name__}: {exc}). Chuyển sang tải từ API.")
         print("Getting data from API")
         article_id = "23690811"
         api_url = f"https://api.figshare.com/v2/articles/{article_id}"
@@ -476,6 +623,17 @@ user_data = pd.DataFrame(
     columns=user_data.columns,
     index=user_data.index
 )
+
+# The fitted imputer is saved, not discarded.
+#
+# It used to be thrown away after filling the table, which meant nothing could
+# reproduce the same imputation later. The web app receives complete form
+# fields so it never needs it, but any future path that accepts partial input
+# would have had to guess, and a guessed imputation produces probabilities that
+# do not correspond to the model that was trained.
+user_data_imputer_file = os.path.join(output_clustering_scaler, 'user_data_imputer.pkl')
+joblib.dump(imputer, user_data_imputer_file)
+print(f"Đã lưu imputer: {user_data_imputer_file}")
 trigger_profiling = asking_window("Ask for profiling", "Do you want to get processed user profiling data?")
 if trigger_profiling:
     processed_user_output_filename = "Processed_user_data_profiling.html"
@@ -763,7 +921,9 @@ y_raw = final_modeling_df[target].values
 
 #LỌC LỚP HIẾM (Để SMOTE và CV không bị lỗi)
 #Lọc dựa trên y_raw để đảm bảo mọi lớp đều có ít nhất 6 mẫu
-min_samples = 6
+# Derived from the fold count, not a bare constant: a class with fewer members
+# than folds cannot populate every training fold.
+min_samples = max(6, _CV_SPLITS + 1)
 counts = Counter(y_raw)
 valid_classes = [cls for cls, count in counts.items() if count >= min_samples]
 
@@ -811,7 +971,7 @@ s1_df_final.to_excel(f'{output_predicting_result}/s1_predict_training_result.xls
 s1_model = GradientBoostingClassifier(n_estimators=100, max_depth=5, random_state=42)
 s1_X = data_variants['ADASYN'][0]
 s1_y = data_variants['ADASYN'][1]
-cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+cv = StratifiedKFold(n_splits=_CV_SPLITS, shuffle=True, random_state=42)
 scoring_metrics = {
     'accuracy': 'accuracy',
     'precision': 'precision_weighted',
