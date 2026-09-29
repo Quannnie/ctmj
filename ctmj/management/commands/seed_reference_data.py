@@ -83,3 +83,13 @@ class Command(BaseCommand):
                 f"{verb}: {total_created} created, {total_updated} updated."
             )
         )
+
+        if not dry_run:
+            # The lookup tables are cached in memory. ``update_or_create`` does
+            # fire post_save, but the cache is bumped explicitly so a bulk
+            # rewrite, a raw SQL fix, or a future change to this loop cannot
+            # leave the site serving pre-seed labels.
+            from ctmj.services.lookups import invalidate_all
+
+            invalidate_all()
+            self.stdout.write("Reference-data cache invalidated.")

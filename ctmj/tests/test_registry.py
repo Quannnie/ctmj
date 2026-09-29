@@ -196,19 +196,27 @@ class HubLoadTestCase(_TempDirTestCase):
         joblib.dump({"tag": tag}, buffer)
         return buffer.getvalue()
 
-    def test_loads_every_artefact_through_the_bucket_client(self):
-        """All five come from the same bucket, one download each."""
+    def test_loads_every_artefact_through_the_hub_client(self):
+        """All five come from the same address, one download each.
+
+        ``resolve_kind`` is mocked as well as the download: the client probes
+        the address to learn whether it is a bucket or a repository, and an
+        unmocked probe reaches the network.
+        """
         payload = self._payload()
         seen: list[str] = []
 
-        def fake_fetch(bucket, filename, token=None, timeout=None):
+        def fake_fetch(bucket, filename, token=None, timeout=None, **kwargs):
             seen.append(filename)
             return payload
 
         registry = ModelRegistry(_config("hf", self.model_dir))
         with mock.patch.dict(os.environ, {"HF_TOKEN": "hf_fake"}, clear=False):
-            with mock.patch("ctmj.services.hub.fetch_artefact", side_effect=fake_fetch):
-                status = registry.load_sync()
+            with mock.patch("ctmj.services.hub.resolve_kind", return_value="bucket"):
+                with mock.patch(
+                    "ctmj.services.hub.fetch_artefact", side_effect=fake_fetch
+                ):
+                    status = registry.load_sync()
 
         self.assertIs(status.state, LoadState.READY)
         self.assertEqual(registry.get("dbscan"), {"tag": "from-hub"})
@@ -229,10 +237,11 @@ class HubLoadTestCase(_TempDirTestCase):
             if k not in {"HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"}
         }
         with mock.patch.dict(os.environ, env, clear=True):
-            with mock.patch(
-                "ctmj.services.hub.fetch_artefact", return_value=payload
-            ) as fetch:
-                status = registry.load_sync()
+            with mock.patch("ctmj.services.hub.resolve_kind", return_value="bucket"):
+                with mock.patch(
+                    "ctmj.services.hub.fetch_artefact", return_value=payload
+                ) as fetch:
+                    status = registry.load_sync()
 
         self.assertIs(status.state, LoadState.READY)
         self.assertEqual(registry.get("dbscan"), {"tag": "anonymous"})
@@ -248,20 +257,23 @@ class HubLoadTestCase(_TempDirTestCase):
         """
         from ctmj.services import hub
 
-        def fake_fetch(bucket, filename, token=None, timeout=None):
+        def fake_fetch(bucket, filename, token=None, timeout=None, **kwargs):
             if filename.startswith("dbscan"):
-                raise hub.HubError("not in bucket")
+                raise hub.HubError("not there")
             return self._payload()
 
         registry = ModelRegistry(_config("hf", self.model_dir))
         with mock.patch.dict(os.environ, {"HF_TOKEN": "hf_fake"}, clear=False):
-            with mock.patch("ctmj.services.hub.fetch_artefact", side_effect=fake_fetch):
-                status = registry.load_sync()
+            with mock.patch("ctmj.services.hub.resolve_kind", return_value="bucket"):
+                with mock.patch(
+                    "ctmj.services.hub.fetch_artefact", side_effect=fake_fetch
+                ):
+                    status = registry.load_sync()
 
         self.assertIs(status.state, LoadState.FAILED)
         # The filename list stays bare: that is what an operator supplies.
         self.assertEqual(status.missing, ["dbscan.pkl"])
         # The reason is alongside it, keyed by the same filename.
         self.assertIn("dbscan.pkl", status.errors)
-        self.assertIn("not in bucket", status.errors["dbscan.pkl"])
+        self.assertIn("not there", status.errors["dbscan.pkl"])
         self.assertEqual(set(status.as_dict()["errors"]), {"dbscan.pkl"})

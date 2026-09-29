@@ -106,67 +106,93 @@ inference — which is why a contract test asserts the two lists are identical,
 and why a training run re-reads its own artefacts and drives them through
 `predict()` before reporting success.
 
-#### Reading artefacts from the Hub
+#### Reading artefacts from Hugging Face
 
-The artefacts live in a Hugging Face **storage bucket**,
-`buckets/quanghuynh0122/datamining_models`. That is a different surface from a
-model repository, and it changes what works:
+`CTMJ_HF_REPO` may name a **storage bucket** or a **model repository**. They are
+addressed differently, and a loader that knows only one fails on the other with
+a 404 that names neither the token nor the file:
 
-* `huggingface_hub` cannot address it. Its id validator accepts
-  `repo_name` or `namespace/repo_name`, there is no `repo_type` that fits, and
-  `HfApi.repo_info` raises `HFValidationError` before making a request. The
-  same applies to `HfFileSystem`, so the old `fsspec.filesystem("hf")` path
-  could not have read a bucket under any circumstances.
-* `/api/models/...`, `/api/datasets/...` and `/api/spaces/...` all answer 404
-  for a bucket, which reads exactly like "it does not exist".
+| | list | download |
+|---|---|---|
+| bucket | `GET /api/buckets/{id}/tree` | `GET /buckets/{id}/resolve/{filename}` |
+| repository | `GET /api/models/{id}/tree/{rev}` | `GET /{id}/resolve/{rev}/{filename}` |
 
-`ctmj/services/hub.py` speaks the bucket's own scheme:
+The bucket has **no revision segment**; a repository has one, defaulting to
+`main`. Nothing in the request says which applies, so `ctmj/services/hub.py`
+probes once and remembers the answer, with the bucket tried first.
 
+`huggingface_hub` cannot address a bucket at all: the id validator accepts
+`repo_name` or `namespace/repo_name`, no `repo_type` fits, and `HfApi.repo_info`
+raises `HFValidationError` before making a request. The old
+`fsspec.filesystem("hf")` path therefore could not have read a bucket under any
+circumstances. The HTTP client is spelled out in `hub.py`, and both address
+kinds go through the same code path.
+
+Buckets are **read-only mirrors of external cloud storage** — no upload endpoint
+exists (eight candidate routes answer 404), the page has no upload control, and
+its state carries `canReadRepoContent` with no write flag. Every "upload" string
+on a bucket page is the `uploadedAt` column. Publishing artefacts means creating
+a model repository.
+
+> **Three corrections, each of which cost a debugging cycle.** The `buckets/`
+> segment was twice taken for a Google Cloud Storage convention and "fixed"
+> away — it is the bucket namespace. The failure was blamed on the token,
+> because `FileNotFoundError: repository not found` is what a bad token looks
+> like and also what a wrong address looks like; the bucket was public
+> throughout. And a 401 from an *anonymous* request means private-or-absent,
+> not "bad token" — the Hub answers 401 rather than 404 when no credential is
+> sent, so the probe only reports a credential problem when one was actually
+> sent. `status.missing` carries the reason per artefact in a separate `errors`
+> field, so a 403, an absent file and a version clash stop being
+> indistinguishable.
+
+Set `CTMJ_TEST_HF_NETWORK=1` to run the opt-in tests in
+`ctmj/tests/test_hf_path.py` that hit the live Hub.
+
+#### The two artefact sets
+
+| | `buckets/quanghuynh0122/datamining_models` | `quanghuynh0122/ctmj-demo-models` |
+|---|---|---|
+| Kind | storage bucket, public | model repository, private |
+| Contents | 9 files, 471 MB | 7 files, 28 MB |
+| Trained on | the real journey dataset | synthetic fixture, 700 profiles |
+| Use | the only quotable numbers | proving the loading path works |
+
+The real bucket also carries four
+`s2_predicting_preprocessor_cluster_*.pkl` — the per-segment preprocessors
+`src/main.py` fitted and that the pooled design in `src/cjps_train/` replaced.
+Its `spectral_clustering_model.pkl` is 465 MB on its own, because
+`SpectralClustering` persists its n-by-n affinity matrix (7 807 rows here).
+
+Point the app at either:
+
+```bash
+# real artefacts (public bucket, no token needed)
+export CTMJ_MODEL_SOURCE=hf
+export CTMJ_HF_REPO=quanghuynh0122/datamining_models
+
+# demo artefacts (private repository, token required)
+export CTMJ_HF_REPO=quanghuynh0122/ctmj-demo-models
+export HF_TOKEN=...
 ```
-list       GET /api/buckets/{bucket}/tree
-download   GET /buckets/{bucket}/resolve/{filename}
-```
-
-Note there is **no revision segment**. A repository serves
-`/resolve/{revision}/{path}`; a bucket serves `/resolve/{path}`, so probing the
-repository shape 404s for a file that is present. The bucket is public, so
-`HF_TOKEN` is optional and its absence is not an error.
-
-> A correction worth recording, because it cost a debugging cycle. The
-> `buckets/` segment was twice taken for a Google Cloud Storage convention and
-> "fixed" away. It is the bucket namespace. The failure was attributed to the
-> token, because `FileNotFoundError: repository not found` is what a bad token
-> looks like — and it is also what a wrong address looks like. The bucket was
-> public throughout. `status.missing` now carries the reason for each failure in
-> a separate `errors` field, so a 403, a missing file and a scikit-learn version
-> clash stop being indistinguishable.
-
-Set `CTMJ_TEST_HF_NETWORK=1` to run the three opt-in tests in
-`ctmj/tests/test_hf_path.py` that hit the live bucket.
 
 #### The trained artefacts and scikit-learn
 
-The bucket holds the original research run: 9 files, 471 MB, including four
-`s2_predicting_preprocessor_cluster_*.pkl` — the per-segment preprocessors that
-`src/main.py` fitted and that the pooled design in `src/cjps_train/` replaced.
-`spectral_clustering_model.pkl` is 465 MB on its own, because
-`SpectralClustering` persists its n-by-n affinity matrix (7 807 rows here).
-
-On scikit-learn 1.9, **four of the five artefacts load and the classifier does
-not**:
+On scikit-learn 1.9, **four of the five real artefacts load and the classifier
+does not**:
 
 ```
 AttributeError: Can't get attribute '__pyx_unpickle_CyHalfMultinomialLoss'
 on <module 'sklearn._loss.loss'>
 ```
 
-The pickle was written by a Cython build that emitted
-`__pyx_unpickle_*` symbols; scikit-learn 1.9 emits none. Registering a
-top-level `_loss` alias in `sys.modules` bridges the module name but not the
-missing symbol, so this is not shimmable — the artefact has to be either loaded
-under the scikit-learn version that wrote it, or retrained. The preprocessors
-load with an `InconsistentVersionWarning` (written by 1.8.0) and work; the
-spectral model has no `components_`, which is the scikit-learn 1.6 removal that
+The pickle was written by a Cython build that emitted `__pyx_unpickle_*`
+symbols; scikit-learn 1.9 emits none. Registering a top-level `_loss` alias in
+`sys.modules` bridges the module name but not the missing symbol, so this is
+not shimmable — the artefact has to be either loaded under the scikit-learn
+version that wrote it, or retrained. The preprocessors load with an
+`InconsistentVersionWarning` (written by 1.8.0) and work; the spectral model has
+no `components_`, which is the scikit-learn 1.6 removal that
 `ctmj/services/predictor.py` already compensates for.
 
 ### Operations
@@ -213,6 +239,52 @@ templates/               base, home, predict, 404, partials/
 
 Reference data lives in a **data migration**, not a committed SQLite file, so a
 fresh clone needs nothing but `migrate`. `db.sqlite3` is git-ignored.
+
+---
+
+## Performance
+
+### Reference data is cached
+
+The lookup tables hold 91 rows between them and are populated once, by a data
+migration or `manage.py seed_reference_data`. They were nevertheless re-read on
+every request: `validate_prediction_form` issued 11 queries and the dropdown
+context another 8, all for the same static rows, on the critical path of the
+one request that has to feel instant.
+
+Measured end to end through the WSGI handler, 30 requests per case, rotating the
+cache before every request in the "before" column to reproduce the old
+behaviour exactly:
+
+| Request | Before | After | |
+|---|---|---|---|
+| `GET /` | 1.42 ms, 1 query | 1.02 ms, 0 queries | −29% |
+| `GET /predict/` | 6.59 ms, 8 queries | 4.35 ms, 0 queries | −34% |
+| `POST /predict/` | 9.71 ms, 19 queries | 4.61 ms, 0 queries | **−53%, 2.1×** |
+
+Validation and dropdown population together: 4.462 ms → 0.333 ms.
+
+`ctmj/services/lookups.py` owns the cache. Invalidation is a version integer
+rotated on write, so it is O(1) regardless of how much is cached, and it is
+triggered by `post_save` / `post_delete` on the reference models — an edit in
+`/admin/` takes effect on the next request. `seed_reference_data` invalidates
+explicitly, because `bulk_create` and `queryset.update` bypass signals.
+
+A cache is only worth having if it is correct, so a failure of the cache
+backend degrades to reading the database rather than raising: losing the cache
+costs queries, raising costs the request. The signalled invalidation is
+registered *before* the model-loading deferral check in `apps.py`, because every
+process that can write a lookup row — a test, a management command, a worker —
+is one that defers loading.
+
+### What is left
+
+The remaining 4.3 ms on `GET /predict/` is template rendering: eight dropdowns
+of `<option>` elements, plus the form. There are no database queries left on the
+request path. A profile of `POST /predict/` shows `predict_view` accounting for
+essentially all of it, with no single dominant callee — the cost is spread
+across Django's template engine rather than concentrated anywhere worth
+attacking.
 
 ---
 
