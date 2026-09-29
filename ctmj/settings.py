@@ -81,6 +81,11 @@ CSRF_TRUSTED_ORIGINS = [
 # ---------------------------------------------------------------------------
 # Applications
 # ---------------------------------------------------------------------------
+# Discovers both ctmj/tests and src/tests. The default runner found only the
+# former, because src/ imports as a namespace package and unittest's discovery
+# does not descend into those. See ctmj/testrunner.py.
+TEST_RUNNER = "ctmj.testrunner.RunTests"
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

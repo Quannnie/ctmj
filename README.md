@@ -40,8 +40,18 @@ Rebuild the genuine artefacts from `src/main.py`.
 python manage.py test
 ```
 
-The suite needs no network access and no model artefacts: it fits small real
-scikit-learn estimators as fixtures (`ctmj/tests/factories.py`).
+294 tests, about 90 seconds. No network access and no model artefacts required:
+the app tests fit small real scikit-learn estimators as fixtures
+(`ctmj/tests/factories.py`) and the training tests generate their own source
+CSVs (`src/cjps_train/fixtures.py`).
+
+The default `manage.py test` found only 143 of those. `src/` has no
+`__init__.py`, so it imports as a namespace package and `unittest`'s directory
+discovery skips it — quietly, because the modules themselves import fine.
+`ctmj/testrunner.py` now discovers both roots explicitly and **fails** if either
+collects nothing, so a moved or renamed test directory cannot present as a
+passing run. To run one root: `python manage.py test ctmj` or
+`python manage.py test src`.
 
 ---
 
@@ -111,8 +121,14 @@ ctmj/
     seed_reference_data.py   re-sync lookup tables
     build_demo_models.py     generate offline demo artefacts
   migrations/0011_seed_reference_data.py   fresh clone -> migrate -> works
-  tests/                 121 tests, no network, no artefacts required
-src/                     research pipeline (EDA, preprocessing, training)
+  testrunner.py        discovers both test roots; fails if one is empty
+  tests/               152 tests, no network, no artefacts required
+src/
+  cjps_train/          the production training pipeline (see below)
+  main.py              the original research script, kept for reference
+  pre_processing.py    SMOTE / Tomek / ADASYN, fold-safe wrappers
+  eda.py, dataset/     profiling helpers and the Figshare loader
+  tests/               142 tests for everything under src/
 static/css/main.css      design tokens + components, no framework
 static/js/app.js         progressive enhancement only
 templates/               base, home, predict, 404, partials/
@@ -202,12 +218,77 @@ so it is covered there.
 
 ---
 
-## Data
+## Training
 
-All customer data in this repository is synthetic. `src/` contains the research
-pipeline (EDA, preprocessing, model benchmarking, training); its outputs under
-`resources/profiling/` are git-ignored because they are regenerable and large.
+`src/cjps_train/` is the production training pipeline. `src/main.py` is the
+original research script and is kept for reference; it still contains its
+`print()` calls and interactive `asking_window()` prompts.
 
-The research code retains some `print()` calls and interactive
-`asking_window()` prompts. It is a notebook-driven pipeline and is not wired into
-the web app.
+```bash
+# Validate the data without training anything
+python -m src.cjps_train.cli --data-dir data --dry-run
+
+# Full run: trains, writes the five artefacts, verifies them
+python -m src.cjps_train.cli --data-dir data --force
+```
+
+Point it at the source CSVs with `--data-dir`, or set `CJPS_DATA_DIR`
+(`CJPS_JOURNEYS_CSV` / `CJPS_USERS_CSV` override individually). It writes to
+`models/` and `resources/training/training_manifest.json`; both are
+configurable. Every run writes a manifest recording the seed, library versions,
+data row counts, the full clustering diagnostic, the whole benchmark table, and
+the holdout score.
+
+### What changed, and why it matters
+
+The numbers the original pipeline reported could not be trusted. Four defects,
+each of which produces a model that trains without complaint while measuring
+the wrong thing:
+
+**Resampling ran before the cross-validation split.** SMOTE and ADASYN were
+applied to the whole dataset, and folds were drawn from the resampled result.
+SMOTE synthesises a minority point by interpolating between a real sample and one
+of its k nearest same-class neighbours — so once the whole dataset had been
+resampled, a validation row was a candidate neighbour, and the model trained on
+a synthetic point derived from the row it was about to be scored against. Every
+reported F1 was measuring memorisation. Resampling now happens on the training
+slice of each fold, and a test asserts the sampler never sees a validation row.
+
+**There was no holdout set.** Nothing was ever scored on data that had not
+already influenced a decision. A stratified split is now taken before model
+selection and scored exactly once, at the end.
+
+**The benchmark was decorative.** Six models across five resamplers were fitted
+and a table printed, then the code fitted a hardcoded
+`GradientBoostingClassifier(n_estimators=100, max_depth=5)` against a hardcoded
+`n_clusters=3` regardless of what the table said. The roster is now evaluated,
+ranked, and the winner is what gets written — with the numbers that put it
+there in the manifest. `eps` and the cluster count are likewise chosen by
+searching, not assumed.
+
+**A failing model vanished.** `cross_validate` was wrapped in a `try/except`
+that printed and continued, so a model that could not fit simply disappeared
+from the results. A missing row reads as "we did not think it was worth trying",
+which is a very different claim from "it broke". Failures are now recorded with
+their error and sorted last.
+
+Also fixed along the way: `--` was being read as a string rather than as missing
+data, which defeated every numeric operation downstream; rows with partial
+profiles were dropped outright, making the KNN imputer a no-op while the report
+claimed the data was clean; the fitted imputer was discarded instead of saved, so
+training and serving could never agree; `SGDClassifier(loss='hinge')` was
+benchmarked for a task that requires probabilities; `MLPClassifier` ran
+unregularised with convergence warnings globally suppressed; output paths were
+relative to the working directory; input paths were hardcoded to one machine.
+
+### Reading the manifest
+
+`resources/training/training_manifest.json` is the record of a run. The
+`notes` array is the part to read first — it flags a segmentation with fewer
+than two segments, a `k` sitting at the edge of the searched range, a smallest
+segment too thin for stable probabilities, and a cross-validated score more than
+0.15 above the holdout. A run is not finished until `verification.ok` is true:
+the artefacts are re-read from disk and driven through
+`ctmj.services.predictor.predict` before the run reports success, so a
+training/inference contract mismatch surfaces as a training failure rather than
+as a broken form.

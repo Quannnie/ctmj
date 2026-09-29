@@ -1,3 +1,34 @@
+"""Original research script. Superseded by ``src/cjps_train/``.
+
+Kept for reference and for the notebooks in ``src/``, which still call into the
+helpers below. Do not use it to produce artefacts for the web app.
+
+What was wrong with it, in short:
+
+* SMOTE/ADASYN were applied to the whole dataset *before* the cross-validation
+  split, so every reported score was inflated — a validation row was a candidate
+  neighbour for the synthetic samples the model trained on.
+* There was no holdout set, so nothing was ever scored on data that had not
+  already influenced a decision.
+* The benchmark was decorative. Six models over five resamplers were fitted and
+  a table printed; the shipped artefacts were then a hardcoded
+  ``GradientBoostingClassifier`` and a hardcoded ``n_clusters=3``, chosen before
+  the table existed.
+* ``cross_validate`` failures were swallowed, so a model that could not fit
+  vanished from the results rather than being reported.
+* ``"--"`` was read as a string instead of as missing data, so the numeric
+  columns it marked were not numeric at all.
+* Output paths were relative to the working directory and input paths were
+  hardcoded to one machine.
+
+Run the replacement instead::
+
+    python -m src.cjps_train.cli --data-dir data --force
+
+The module-level code below still executes on import, which is why importing it
+is not free. That is also one of the reasons it is not wired into the app.
+"""
+
 #import package
 import pandas as pd
 import numpy as np
