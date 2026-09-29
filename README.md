@@ -68,8 +68,8 @@ it to `.env` for local overrides.
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | empty | e.g. `https://cjps.example.com` |
 | `CTMJ_MODEL_SOURCE` | `auto` | `auto` \| `local` \| `hf` \| `none` |
 | `CTMJ_MODEL_DIR` | `./models` | Local artefact directory |
-| `CTMJ_HF_REPO` | `quanghuynh0122/datamining_models` | Hugging Face repository |
-| `HF_TOKEN` | empty | Read token, only for `CTMJ_MODEL_SOURCE=hf` |
+| `CTMJ_HF_REPO` | `quanghuynh0122/datamining_models` | Hugging Face **storage bucket** |
+| `HF_TOKEN` | empty | Optional. The bucket is public; a token is only needed for a private one |
 | `DJANGO_LOG_LEVEL` | `INFO` | Application log level |
 
 `auto` prefers `./models` when all five artefacts are present, otherwise falls
@@ -77,9 +77,9 @@ back to the Hub if `HF_TOKEN` is set, otherwise runs with predictions disabled
 and explains why in the UI. **There is no interactive prompt anywhere** — see
 [Why model loading changed](#why-model-loading-changed).
 
-`CTMJ_HF_REPO` must be `{owner}/{repo}`. A bare name has no namespace and would
-resolve against whichever account the token belongs to; the registry rejects it
-at startup rather than letting a 404 discover it.
+`CTMJ_HF_REPO` must be `{owner}/{bucket}`. A bare name has no owner and the URL
+would name the wrong thing; the registry rejects it at startup rather than
+letting a 404 discover it.
 
 > **Rotate any HF token pasted into a chat, terminal log or issue.** `HF_TOKEN`
 > is read from the environment and is never written to the repository, but a
@@ -108,22 +108,66 @@ and why a training run re-reads its own artefacts and drives them through
 
 #### Reading artefacts from the Hub
 
-`HfFileSystem` takes the **first two** path segments as the repository
-namespace and the rest as the file path within it
-(`repo_id_with_namespace = "/".join(path.split("/")[:2])`). So the path is
-`{owner}/{repo}/{filename}`.
+The artefacts live in a Hugging Face **storage bucket**,
+`buckets/quanghuynh0122/datamining_models`. That is a different surface from a
+model repository, and it changes what works:
 
-This previously built `buckets/{owner}/{repo}/{filename}`. `buckets/` is a
-Google Cloud Storage convention; on the Hub it shifted the namespace by one
-segment, so the loader requested a repository literally named
-`buckets/quanghuynh0122` and every artefact failed with
-`FileNotFoundError: repository not found` — a message that points at the token
-or the repository name, neither of which was wrong. Verified against
-`huggingface_hub` 0.36: `buckets/openai-community/gpt2/config.json` raises
-while `openai-community/gpt2/config.json` resolves.
-`ctmj/tests/test_hf_path.py` pins the format without needing a token or the
-network; set `CTMJ_TEST_HF_NETWORK=1` to add a live resolution check against a
-public repository.
+* `huggingface_hub` cannot address it. Its id validator accepts
+  `repo_name` or `namespace/repo_name`, there is no `repo_type` that fits, and
+  `HfApi.repo_info` raises `HFValidationError` before making a request. The
+  same applies to `HfFileSystem`, so the old `fsspec.filesystem("hf")` path
+  could not have read a bucket under any circumstances.
+* `/api/models/...`, `/api/datasets/...` and `/api/spaces/...` all answer 404
+  for a bucket, which reads exactly like "it does not exist".
+
+`ctmj/services/hub.py` speaks the bucket's own scheme:
+
+```
+list       GET /api/buckets/{bucket}/tree
+download   GET /buckets/{bucket}/resolve/{filename}
+```
+
+Note there is **no revision segment**. A repository serves
+`/resolve/{revision}/{path}`; a bucket serves `/resolve/{path}`, so probing the
+repository shape 404s for a file that is present. The bucket is public, so
+`HF_TOKEN` is optional and its absence is not an error.
+
+> A correction worth recording, because it cost a debugging cycle. The
+> `buckets/` segment was twice taken for a Google Cloud Storage convention and
+> "fixed" away. It is the bucket namespace. The failure was attributed to the
+> token, because `FileNotFoundError: repository not found` is what a bad token
+> looks like — and it is also what a wrong address looks like. The bucket was
+> public throughout. `status.missing` now carries the reason for each failure in
+> a separate `errors` field, so a 403, a missing file and a scikit-learn version
+> clash stop being indistinguishable.
+
+Set `CTMJ_TEST_HF_NETWORK=1` to run the three opt-in tests in
+`ctmj/tests/test_hf_path.py` that hit the live bucket.
+
+#### The trained artefacts and scikit-learn
+
+The bucket holds the original research run: 9 files, 471 MB, including four
+`s2_predicting_preprocessor_cluster_*.pkl` — the per-segment preprocessors that
+`src/main.py` fitted and that the pooled design in `src/cjps_train/` replaced.
+`spectral_clustering_model.pkl` is 465 MB on its own, because
+`SpectralClustering` persists its n-by-n affinity matrix (7 807 rows here).
+
+On scikit-learn 1.9, **four of the five artefacts load and the classifier does
+not**:
+
+```
+AttributeError: Can't get attribute '__pyx_unpickle_CyHalfMultinomialLoss'
+on <module 'sklearn._loss.loss'>
+```
+
+The pickle was written by a Cython build that emitted
+`__pyx_unpickle_*` symbols; scikit-learn 1.9 emits none. Registering a
+top-level `_loss` alias in `sys.modules` bridges the module name but not the
+missing symbol, so this is not shimmable — the artefact has to be either loaded
+under the scikit-learn version that wrote it, or retrained. The preprocessors
+load with an `InconsistentVersionWarning` (written by 1.8.0) and work; the
+spectral model has no `components_`, which is the scikit-learn 1.6 removal that
+`ctmj/services/predictor.py` already compensates for.
 
 ### Operations
 

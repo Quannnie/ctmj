@@ -73,6 +73,11 @@ class RegistryStatus:
     loaded: list[str] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
     error: str = ""
+    #: Per-artefact failure reason, keyed by filename. Distinct from
+    #: ``missing``, which only says *which* files are absent. A 403, a missing
+    #: file and a scikit-learn version clash all land in ``missing``, and the
+    #: remedy differs in each case.
+    errors: dict[str, str] = field(default_factory=dict)
 
     @property
     def ready(self) -> bool:
@@ -86,7 +91,18 @@ class RegistryStatus:
             "loaded": list(self.loaded),
             "missing": list(self.missing),
             "error": self.error,
+            "errors": dict(self.errors),
         }
+
+
+def _condense(exc: Exception, limit: int = 200) -> str:
+    """One-line form of an exception, for a status field read in a browser."""
+    text = " ".join(str(exc).split())
+    if not text:
+        return type(exc).__name__
+    if len(text) > limit:
+        text = text[: limit - 3] + "..."
+    return f"{type(exc).__name__}: {text}" if text != type(exc).__name__ else text
 
 
 class ModelRegistry:
@@ -108,6 +124,7 @@ class ModelRegistry:
         self._models: dict[str, Any] = {}
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
+        self._last_errors: dict[str, str] = {}
         self._status = RegistryStatus(source=self._source)
 
         if not self._model_files:
@@ -217,9 +234,11 @@ class ModelRegistry:
                 self._models.update(loaded)
                 # ``loaded`` and ``missing`` both report *filenames*, so an
                 # operator reading /health/ sees a consistent picture of which
-                # artefacts are present and which to supply.
+                # artefacts are present and which to supply. The reason each
+                # one failed rides alongside, in its own field.
                 self._status.loaded = sorted(self._model_files[k] for k in loaded)
                 self._status.missing = sorted(missing)
+                self._status.errors = dict(getattr(self, "_last_errors", {}))
                 if missing:
                     self._status.state = LoadState.FAILED
                     self._status.error = f"missing artefacts: {', '.join(sorted(missing))}"
@@ -265,7 +284,17 @@ class ModelRegistry:
         return all((self._model_dir / name).is_file() for name in self._model_files.values())
 
     def _load_from(self, source: str) -> tuple[dict[str, Any], list[str]]:
-        """Load every artefact from ``source``; never raises for a missing file."""
+        """Load every artefact from ``source``; never raises for a missing file.
+
+        ``missing`` stays a list of *filenames*, because that is what an
+        operator needs in order to know what to supply, and ``/health/`` renders
+        it as such. The reason each one failed is kept separately in
+        ``self._last_errors`` and surfaces on the status as a separate mapping,
+        because a download can fail because the file is not in the bucket,
+        because the token was refused, or because the artefact deserialised
+        against the wrong scikit-learn version -- three different remedies
+        that "missing: dbscan.pkl" conflates.
+        """
         loader: Callable[[str, Path], Any]
         if source == "local":
             loader = self._load_local
@@ -276,14 +305,15 @@ class ModelRegistry:
 
         loaded: dict[str, Any] = {}
         missing: list[str] = []
+        errors: dict[str, str] = {}
         for key, filename in self._model_files.items():
             try:
                 loaded[key] = loader(key, Path(filename))
-            except FileNotFoundError:
-                missing.append(filename)
             except Exception as exc:  # noqa: BLE001
                 logger.error("Failed to load %s (%s): %s", key, filename, exc)
                 missing.append(filename)
+                errors[filename] = _condense(exc)
+        self._last_errors = errors
         return loaded, missing
 
     def _load_local(self, key: str, filename: Path) -> Any:
@@ -296,64 +326,38 @@ class ModelRegistry:
         return joblib.load(path)
 
     def validate_hf_repo(self) -> str:
-        """Check the configured repository id before it is used to build a path.
+        """Check the configured bucket id before it is used to build a URL.
 
-        A Hub repository is addressed as ``{owner}/{repo}``. A single segment
-        has no owner, and the path would then resolve against whatever namespace
-        the token happens to belong to — so the wrong repository is read
-        without any error at the point of use. Caught here instead, where the
-        message can name the setting.
+        Delegated to :mod:`ctmj.services.hub`, which owns the addressing rules.
         """
-        repo = (self._hf_repo or "").strip().strip("/")
-        parts = [p for p in repo.split("/") if p]
-        if len(parts) < 2:
-            raise ValueError(
-                f"CTMJ_HF_REPO must be '{'{owner}'}/{'{repo}'}', got {self._hf_repo!r}. "
-                "A bare repository name has no namespace and would resolve "
-                "against the token owner's account instead."
-            )
-        return repo
+        from ctmj.services import hub
+
+        return hub.validate_bucket_id(self._hf_repo)
 
     def hf_path(self, filename: str) -> str:
-        """The path ``HfFileSystem`` expects for one artefact.
+        """The download URL for one artefact.
 
-        ``HfFileSystem.resolve_path`` takes the **first two** path segments as
-        the repository namespace and treats the rest as the file path within it::
-
-            repo_id_with_namespace = "/".join(path.split("/")[:2])
-
-        so the correct form is ``{owner}/{repo}/{filename}``.
-
-        This previously built ``buckets/{owner}/{repo}/{filename}``. That prefix
-        is a Google Cloud Storage convention that does not apply here, and it
-        made the first two segments ``buckets/{owner}`` — a repository that does
-        not exist. The result was a ``FileNotFoundError: repository not found``
-        for every artefact, with a valid token and a correct repository name,
-        which reads exactly like "the token is wrong". Verified against
-        ``huggingface_hub`` 0.36: ``buckets/openai-community/gpt2/config.json``
-        raises while ``openai-community/gpt2/config.json`` resolves.
+        See :mod:`ctmj.services.hub` for why a storage bucket needs its own
+        scheme and why ``huggingface_hub`` cannot read one.
         """
-        return f"{self.validate_hf_repo()}/{filename}"
+        from ctmj.services import hub
+
+        return hub.artefact_url(self._hf_repo, filename)
 
     def _load_hf(self, key: str, filename: Path) -> Any:
-        import joblib
+        """Download and deserialise one artefact from the bucket.
 
+        A missing token is not an error here. The bucket is public, so an
+        anonymous read works; refusing without a token made a correctly
+        configured deployment report "models unavailable" for no reason.
+        """
+        from ctmj.services import hub
+
+        logger.debug("Loading %s from %s", key, self.hf_path(str(filename)))
         try:
-            import fsspec
-        except ImportError as exc:  # pragma: no cover
-            raise RuntimeError(
-                "fsspec is required for CTMJ_MODEL_SOURCE=hf. "
-                "Install it with: pip install fsspec huggingface_hub"
-            ) from exc
-
-        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
-        if not token:
-            raise FileNotFoundError(
-                "HF_TOKEN is not set; cannot read the private model repository."
-            )
-
-        remote = self.hf_path(str(filename))
-        logger.debug("Loading %s from hf://%s", key, remote)
-        fs = fsspec.filesystem("hf", token=token)
-        with fs.open(remote, "rb") as handle:
-            return joblib.load(handle)
+            return hub.load_artefact(self._hf_repo, str(filename))
+        except hub.HubError as exc:
+            # The loader collects per-artefact failures and reports the
+            # filenames, so this is turned back into the FileNotFoundError the
+            # caller already knows how to summarise.
+            raise FileNotFoundError(str(exc)) from exc
