@@ -1,5 +1,5 @@
 {% comment %}
-  Pipeline specification table. Kept in a partial so the home page and the
+  Pipeline specification. Kept in a partial so the home page and the
   prediction page can never disagree about how the system works.
 {% endcomment %}
 <table class="spec">
@@ -11,7 +11,7 @@
     </tr>
     <tr>
       <th scope="row">2 · Lọc nhiễu</th>
-      <td>DBSCAN đo khoảng cách tới các cụm lõi. Hồ sơ nằm xa mọi cụm lõi quá ngưỡng <span style="font-family: var(--font-mono);">eps</span> được gán nhãn nhiễu và không đi tiếp.</td>
+      <td>DBSCAN đo khoảng cách tới các cụm lõi. Hồ sơ nằm xa mọi cụm lõi quá ngưỡng <span class="mono">eps</span> được gán nhãn nhiễu và không đi tiếp.</td>
     </tr>
     <tr>
       <th scope="row">3 · Gán phân khúc</th>

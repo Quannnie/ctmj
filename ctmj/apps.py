@@ -56,6 +56,7 @@ class CtmjConfig(AppConfig):
             "check",
             "seed_reference_data",
             "build_demo_models",
+            "make_favicon",
         }
     )
 

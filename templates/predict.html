@@ -13,16 +13,14 @@
 {% block description %}Nhập hồ sơ khách hàng và hai kênh tương tác gần nhất để nhận phân khúc và ba điểm chạm tiếp theo có xác suất cao nhất.{% endblock %}
 
 {% block content %}
-<div class="page" style="padding-block: var(--s-6) var(--s-7);">
+<div class="page" style="padding-block: var(--sp-5) var(--sp-6);">
 
-  <header style="max-width: 46rem; margin-bottom: var(--s-6);">
-    <p class="eyebrow">Dự báo</p>
-    <h1 style="font-size: var(--step-3); margin-bottom: var(--s-3);">
-      Hồ sơ khách hàng và hành trình gần đây
-    </h1>
-    <p class="lede">
-      Mười hai trường, tất cả đều bắt buộc. Mọi giá trị phải có trong danh mục
-      của hệ thống — mã không hợp lệ sẽ bị từ chối trước khi chạy mô hình.
+  <header style="margin-bottom: var(--sp-4);">
+    <p class="label label--primary">CJPS · Dự báo</p>
+    <h1 style="margin-bottom: var(--sp-2);">Nhập hồ sơ và hành trình gần đây</h1>
+    <p class="lede" style="margin-bottom: 0;">
+      Mười hai trường, tất cả bắt buộc. Mọi mã phải có trong danh mục của hệ
+      thống — giá trị không hợp lệ bị từ chối trước khi chạy mô hình.
     </p>
   </header>
     {# Error notices: 400 on bad input, 503 when models are absent. #}
@@ -71,10 +69,8 @@
       {# Ten clustering inputs. #}
       <fieldset class="panel" style="margin: 0; padding: 0;">
         <div class="panel__head">
-          <h2 style="font-size: var(--step-1); margin: 0;">Hồ sơ nhân khẩu học</h2>
-          <p class="muted" style="font-size: var(--step--1); margin: var(--s-1) 0 0;">
-            Mười biến đầu vào cho tầng phân cụm.
-          </p>
+          <h2 class="panel__title">01 · Hồ sơ nhân khẩu học</h2>
+          <p class="panel__hint">10 biến cho tầng phân cụm</p>
         </div>
 
         <div class="panel__body">
@@ -96,10 +92,8 @@
       {# The two most recent touchpoints; order is significant. #}
       <fieldset class="panel" style="margin: 0; padding: 0;">
         <div class="panel__head">
-          <h2 style="font-size: var(--step-1); margin: 0;">Hai kênh tương tác gần nhất</h2>
-          <p class="muted" style="font-size: var(--step--1); margin: var(--s-1) 0 0;">
-            Thứ tự có ý nghĩa: kênh gần nhất ảnh hưởng mạnh nhất tới dự báo.
-          </p>
+          <h2 class="panel__title">02 · Hai kênh tương tác gần nhất</h2>
+          <p class="panel__hint">Thứ tự có ý nghĩa</p>
         </div>
 
         <div class="panel__body">
@@ -114,14 +108,10 @@
       Actions. The submit button keeps its width when loading: the label dims
       instead of vanishing, so the row never reflows on click.
     {% endcomment %}
-    <div class="actions" style="margin-top: var(--s-5);">
-      <button type="submit" class="btn" data-submit>
+    <div class="actions" style="margin-top: var(--sp-4);">
+      <button type="submit" class="btn btn--accent" data-submit>
         <span class="spinner" data-spinner hidden aria-hidden="true"></span>
-        <span data-submit-label>Dự báo bước tiếp theo</span>
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor"
-             stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M2.5 8h11M9 3.5 13.5 8 9 12.5"/>
-        </svg>
+        <span data-submit-label>Chạy dự báo</span>
       </button>
 
       <a class="btn btn--quiet" href="{% url 'predict' %}" data-reset>Xóa và làm lại</a>
@@ -141,57 +131,51 @@
       <div class="section-head">
         <h2 class="section-head__title" id="results-title">Kết quả</h2>
         <p class="section-head__body muted">
-          Phân khúc được gán cho hồ sơ này và ba điểm chạm có xác suất cao nhất
-          trong {{ prediction.distribution|length }} ứng viên.
+          Phân khúc được gán và ba điểm chạm có xác suất cao nhất trong
+          {{ prediction.distribution|length }} ứng viên.
         </p>
       </div>
         {# Assigned segment, plus an explanation when the profile is noise. #}
-      <div class="panel panel--accent" style="margin-bottom: var(--s-5);">
+      <div class="panel panel--accent" style="margin-bottom: var(--sp-3);">
+        <div class="panel__head">
+          <h3 class="panel__title">Phân khúc được gán</h3>
+          <span class="badge {% if prediction.is_noise %}badge--warn{% else %}badge--primary{% endif %}">
+            Cụm {{ prediction.cluster_id }}
+          </span>
+        </div>
         <div class="panel__body">
           <div class="stack">
-
             <div>
-              <p class="eyebrow" style="margin-bottom: var(--s-2);">Phân khúc được gán</p>
-              <div class="inline-pair">
-                <span class="badge {% if prediction.is_noise %}badge--warn{% else %}badge--primary{% endif %}">
-                  Cụm {{ prediction.cluster_id }}
-                </span>
-                <strong style="font-size: var(--step-1); color: var(--ink-900);">
-                  {{ prediction.cluster_label }}
-                </strong>
-              </div>
-            </div>
-
-            <div>
-              <h3 style="font-size: var(--step-1); margin-bottom: var(--s-2);">
-                {{ prediction.cluster_name }}
+              <h3 style="margin-bottom: var(--sp-2); font-size: var(--t-md);">
+                {{ prediction.cluster_label }}
+                <span class="muted" style="font-weight: 400;">— {{ prediction.cluster_name }}</span>
               </h3>
-              <p class="muted" style="margin-bottom: 0;">{{ prediction.cluster_description }}</p>
+              <p class="muted" style="margin-bottom: 0; font-size: var(--t-xs);">{{ prediction.cluster_description }}</p>
             </div>
 
             {% if prediction.is_noise %}
-              <div class="notice notice--warn" style="background: var(--paper-raised);">
-                <span aria-hidden="true" style="font-weight: 700;">!</span>
+              <div class="notice notice--warn">
+                <span aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4.5v4"/><circle cx="8" cy="11.5" r=".9" fill="currentColor" stroke="none"/></svg>
+                </span>
                 <div>
                   <p class="notice__title">Hồ sơ nằm ngoài phạm vi mô hình</p>
                   <p class="notice__body">
                     Khoảng cách tới cụm lõi gần nhất là
-                    {{ prediction.noise_distance_value }}, vượt ngưỡng
-                    chấp nhận của DBSCAN. Xác suất bên dưới vẫn được tính, nhưng
-                    nên coi là tham khảo. Ưu tiên thu thập thêm tương tác thay vì
-                    chạy chiến dịch.
+                    <span class="mono">{{ prediction.noise_distance_value }}</span>, vượt ngưỡng
+                    chấp nhận của DBSCAN. Xác suất bên dưới vẫn được tính nhưng chỉ
+                    mang tính tham khảo — nên thu thập thêm tương tác thay vì chạy
+                    chiến dịch.
                   </p>
                 </div>
               </div>
             {% endif %}
-
           </div>
         </div>
       </div>
+
       {# Ranked candidates. Values are locale-independent; see the header note. #}
-      <h3 style="font-size: var(--step-1); margin-bottom: var(--s-4);">
-        Ba điểm chạm tiếp theo
-      </h3>
+      <h3 style="margin-bottom: var(--sp-2); font-size: var(--t-sm);">Ba điểm chạm tiếp theo</h3>
 
       <ol class="meter">
         {% for channel in prediction.channels %}
