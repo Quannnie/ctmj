@@ -1,0 +1,218 @@
+{% extends 'base.html' %}
+
+{% comment %}
+  Content strategy
+
+  The previous hero was a centred badge + centred h1 + centred paragraph +
+  two centred pill buttons, which is the most recognisable AI-generated layout
+  in use. This one is built as an editorial spread instead:
+
+    * An asymmetric two-column split — wide narrative column, narrow rail.
+    * A left-aligned display heading with an italic accent clause.
+    * A fact strip (numbers) before the prose sections, because readers want
+      the scale of the system before they want its features.
+    * Stacked editorial rows with a rule-run section head, replacing three
+      equal feature cards.
+    * The pipeline described once, in a shared partial, so the home page and
+      the prediction page can never disagree about how the system works.
+{% endcomment %}
+
+{% block content %}
+
+<section class="page" style="padding-block: var(--s-8) var(--s-7);">
+  <div class="split split--wide-first">
+
+    <div class="rise" style="--i: 0;">
+      <p class="eyebrow">Phân cụm · Dự báo · Tối ưu tiếp cận</p>
+
+      <h1 style="margin-bottom: var(--s-5);">
+        Biết khách hàng sẽ chạm vào<br>
+        <em style="font-style: italic; color: var(--accent);">điểm tiếp theo nào.</em>
+      </h1>
+
+      <p class="lede">
+        CJPS đọc hồ sơ nhân khẩu học cùng hai kênh tương tác gần nhất, xếp khách
+        vào một phân khúc, rồi trả về ba điểm chạm có xác suất cao nhất trong
+        hành trình tiếp theo — kèm mô tả hành vi để đội ngũ marketing dùng
+        được ngay.
+      </p>
+
+      <div class="actions" style="margin-top: var(--s-5);">
+        <a class="btn btn--accent" href="{% url 'predict' %}">Chạy một dự báo</a>
+        <a class="btn btn--ghost" href="#pipeline">Cách hoạt động</a>
+      </div>
+    </div>
+
+    <div class="rise" style="--i: 1; align-self: end;">
+      <hr class="rule" style="margin-bottom: var(--s-4);">
+      <p class="eyebrow" style="margin-bottom: var(--s-4);">Hai tầng xử lý</p>
+
+      <ol class="steps">
+        <li>
+          <span class="steps__index" aria-hidden="true">01</span>
+          <div>
+            <span class="steps__title">Phân cụm</span>
+            <span class="steps__body">DBSCAN loại nhiễu, Spectral Clustering gán phân khúc.</span>
+          </div>
+        </li>
+        <li>
+          <span class="steps__index" aria-hidden="true">02</span>
+          <div>
+            <span class="steps__title">Dự báo</span>
+            <span class="steps__body">Gradient Boosting xếp hạng {{ touchpoint_count|default:"20" }} điểm chạm.</span>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+{% comment %} Fact strip: readers want the scale of the system before its features. {% endcomment %}
+<section class="page" style="padding-block: var(--s-6);">
+  <dl class="stat-row" style="margin: 0;">
+    <div class="stat">
+      <dd class="stat__value">{{ touchpoint_count|default:"—" }}</dd>
+      <dt class="stat__label">điểm chạm trong từ điển dự báo</dt>
+    </div>
+    <div class="stat">
+      <dd class="stat__value">{{ cluster_count|default:"—" }}</dd>
+      <dt class="stat__label">phân khúc khách hàng</dt>
+    </div>
+    <div class="stat">
+      <dd class="stat__value">3</dd>
+      <dt class="stat__label">gợi ý được trả về mỗi lần dự báo</dt>
+    </div>
+    <div class="stat">
+      <dd class="stat__value">2</dd>
+      <dt class="stat__label">kênh tương tác gần nhất làm đầu vào</dt>
+    </div>
+  </dl>
+</section>
+
+{% comment %} Use cases: stacked editorial rows, deliberately not a 3-card grid. {% endcomment %}
+<section class="page" style="padding-block: var(--s-6) var(--s-7);">
+  <div class="section-head">
+    <h2 class="section-head__title">Dùng kết quả để làm gì</h2>
+    <p class="section-head__body muted">
+      Mỗi dự báo trả về một phân khúc và ba điểm chạm kèm xác suất. Dưới đây
+      là ba cách đội ngũ marketing thường dùng ngay với đầu ra này.
+    </p>
+  </div>
+
+  <div class="stack-lg">
+
+    <article class="panel">
+      <div class="panel__body">
+        <div class="split split--reverse">
+          <div>
+            <h3 style="font-size: var(--step-2); margin-bottom: var(--s-3);">
+              Ưu tiên ngân sách theo phân khúc
+            </h3>
+            <p class="muted">
+              Phân khúc cho biết ai đang ở giai đoạn nào của hành trình, nên cùng
+              một xác suất 32% có ý nghĩa khác nhau với hai nhóm khác nhau. Đọc
+              kết quả cùng mô tả phân khúc sẽ tránh việc dồn ngân sách vào một
+              nhóm không sẵn sàng chuyển đổi.
+            </p>
+          </div>
+          <table class="spec">
+            <tbody>
+              <tr><th scope="row">Đầu vào</th><td>Hồ sơ nhân khẩu học + 2 kênh gần nhất</td></tr>
+              <tr><th scope="row">Đầu ra</th><td>Một phân khúc, ba điểm chạm</td></tr>
+              <tr><th scope="row">Dùng để</th><td>Sắp xếp thứ tự chiến dịch</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <article class="panel">
+      <div class="panel__body">
+        <div class="split split--reverse">
+          <div>
+            <h3 style="font-size: var(--step-2); margin-bottom: var(--s-3);">
+              Chọn kênh, không chỉ chọn thông điệp
+            </h3>
+            <p class="muted">
+              Kết quả phân biệt rõ điểm chạm chủ động (tìm kiếm, website, app) với
+              điểm chạm bị đẩy (banner, email, retargeting). Cùng một sản phẩm nhưng
+              cần hai cách tiếp cận khác nhau.
+            </p>
+          </div>
+          <table class="spec">
+            <tbody>
+              <tr><th scope="row">Chủ động</th><td>Tìm kiếm, website, app</td></tr>
+              <tr><th scope="row">Bị đẩy</th><td>Banner, email, retargeting, video</td></tr>
+              <tr><th scope="row">Dùng để</th><td>Chọn kênh trước, viết nội dung sau</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+    <article class="panel">
+      <div class="panel__body">
+        <div class="split split--reverse">
+          <div>
+            <h3 style="font-size: var(--step-2); margin-bottom: var(--s-3);">
+              Nhận diện hồ sơ nằm ngoài mô hình
+            </h3>
+            <p class="muted">
+              Khi hồ sơ nằm xa mọi cụm lõi, hệ thống trả về phân khúc nhiễu thay vì
+              ép vào một cụm gần đúng. Đây là tín hiệu đáng giá: hồ sơ đó chưa đủ
+              dữ liệu để dự báo, và chiến dịch đầu tiên nên là thu thập thêm tương
+              tác chứ không phải bán hàng.
+            </p>
+          </div>
+          <table class="spec">
+            <tbody>
+              <tr><th scope="row">Tín hiệu</th><td>Phân khúc −1 (nhiễu)</td></tr>
+              <tr><th scope="row">Ý nghĩa</th><td>Hồ sơ chưa nằm trong phạm vi huấn luyện</td></tr>
+              <tr><th scope="row">Dùng để</th><td>Loại khỏi chiến dịch dự báo, chuyển sang nuôi dưỡng</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+{% comment %} Pipeline. Single source of truth, shared with the prediction page. {% endcomment %}
+<section class="page" id="pipeline" style="padding-block: var(--s-7);">
+  <div class="section-head">
+    <h2 class="section-head__title">Quy trình xử lý</h2>
+    <p class="section-head__body muted">
+      Bốn bước, hai mô hình, một đầu ra duy nhất. Toàn bộ chạy trong bộ nhớ, không
+      gọi ra ngoài.
+    </p>
+  </div>
+
+  <div class="panel">
+    <div class="panel__body">
+      {% include 'partials/pipeline_table.html' %}
+    </div>
+  </div>
+</section>
+
+{% comment %} Operational status, shown honestly rather than hidden. {% endcomment %}
+{% if registry_status %}
+<section class="page" style="padding-bottom: var(--s-7);">
+  <div class="notice {% if registry_status.ready %}notice--ok{% elif registry_status.state.value == 'loading' %}notice--info{% else %}notice--warn{% endif %}">
+    <span aria-hidden="true" style="font-weight: 700;">{% if registry_status.ready %}&#10003;{% else %}!{% endif %}</span>
+    <div>
+      <p class="notice__title">Trạng thái mô hình</p>
+      <p class="notice__body">{{ registry_status.message }}</p>
+      {% if not registry_status.ready %}
+        <p class="notice__body" style="margin-top: var(--s-2);">
+          <a href="{% url 'predict' %}">Mở trang dự báo</a> để xem hướng dẫn khắc phục.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}

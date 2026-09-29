@@ -1,0 +1,23 @@
+{% load ctmj_tags %}
+{% comment %}
+  Select bound to a lookup table.
+
+  Params: name, label, options (list of {value, label}), hint (optional)
+  Repopulates the submitted value after a failed POST and wires up
+  aria-invalid / aria-describedby so the inline error is announced.
+{% endcomment %}
+<div class="field">
+  {% with field_id='f-'|add:name error_id='e-'|add:name hint_id='h-'|add:name message=errors|field_error:name %}
+    <label class="field__label" for="{{ field_id }}">{{ label }}</label>
+
+    <select class="field__control" id="{{ field_id }}" name="{{ name }}" required {% if message %}aria-invalid="true" aria-describedby="{{ error_id }}"{% elif hint %}aria-describedby="{{ hint_id }}"{% endif %}>
+      <option value="">— Chọn —</option>
+      {% for option in options %}
+        <option value="{{ option.value }}" {% if submitted|field_value:name|is_selected:option.value %}selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+
+    {% if hint %}<p class="field__hint" id="{{ hint_id }}">{{ hint }}</p>{% endif %}
+    {% if message %}<p class="field__error" id="{{ error_id }}">{{ message }}</p>{% endif %}
+  {% endwith %}
+</div>

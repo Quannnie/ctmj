@@ -1,0 +1,22 @@
+{% load ctmj_tags %}
+{% comment %}
+  Integer input with stepper buttons.
+
+  Params: name, label, min, max, hint
+  Stepper buttons are a convenience only; the input stays keyboard operable and
+  the value is validated server-side regardless.
+{% endcomment %}
+<div class="field">
+  {% with field_id='f-'|add:name error_id='e-'|add:name hint_id='h-'|add:name message=errors|field_error:name value=submitted|field_value:name %}
+    <label class="field__label" for="{{ field_id }}">{{ label }}</label>
+
+    <div data-stepper style="display: grid; grid-template-columns: auto 1fr auto; gap: var(--s-2); align-items: stretch;">
+      <button type="button" class="btn btn--ghost btn--sm" data-delta="-1" aria-label="Giảm {{ label|lower }}">&minus;</button>
+      <input class="field__control" id="{{ field_id }}" name="{{ name }}" type="number" inputmode="numeric" min="{{ min }}" max="{{ max }}" step="1" value="{{ value }}" required {% if message %}aria-invalid="true" aria-describedby="{{ error_id }}"{% elif hint %}aria-describedby="{{ hint_id }}"{% endif %}>
+      <button type="button" class="btn btn--ghost btn--sm" data-delta="1" aria-label="Tăng {{ label|lower }}">+</button>
+    </div>
+
+    {% if hint %}<p class="field__hint" id="{{ hint_id }}">{{ hint }}</p>{% endif %}
+    {% if message %}<p class="field__error" id="{{ error_id }}">{{ message }}</p>{% endif %}
+  {% endwith %}
+</div>

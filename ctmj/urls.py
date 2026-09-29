@@ -1,24 +1,21 @@
-"""
-URL configuration for ctmj project.
+"""URL configuration for the CJPS project.
 
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
+The root URLconf is named ``ctmj.urls`` (the historical project name) so
+existing deployments and WSGI entry points keep working.
 """
+
 from django.contrib import admin
 from django.urls import path
-from . import views
+
+from ctmj import views
+
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('', views.home_view, name='home'),             # Trang chủ giới thiệu hệ thống
-    path('predict/', views.predict_view, name='predict'), # Trang chứa form dự báo hành trình
+    path("admin/", admin.site.urls),
+    path("", views.home_view, name="home"),
+    path("predict/", views.predict_view, name="predict"),
+    path("health/", views.health_view, name="health"),
 ]
+
+# Only consulted when DEBUG is False; under DEBUG Django renders its own
+# technical 404 page.
+handler404 = "ctmj.views.page_not_found"

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="CJPS">
+  <rect width="32" height="32" rx="5" fill="#8c2f2a"/>
+  <!-- Three ascending bars: the segmentation -> prediction story in one mark. -->
+  <rect x="7"  y="19" width="4" height="7"  rx="1" fill="#f7f4ee"/>
+  <rect x="14" y="14" width="4" height="12" rx="1" fill="#f7f4ee"/>
+  <rect x="21" y="8"  width="4" height="18" rx="1" fill="#f7f4ee"/>
+</svg>

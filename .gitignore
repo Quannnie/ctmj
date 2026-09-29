@@ -1,1 +1,87 @@
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# ---------------------------------------------------------------------------
+# Django
+# ---------------------------------------------------------------------------
+# The SQLite database is a build artefact. All reference data is reproduced by
+# `python manage.py migrate` (see ctmj/migrations/0010_seed_reference_data.py).
+db.sqlite3
+db.sqlite3-journal
+*.sqlite3
+/local_settings.py
+
+# Collected static files
+/staticfiles/
+/media/
+
+# ---------------------------------------------------------------------------
+# Trained model artefacts (large binaries, fetched at runtime)
+# ---------------------------------------------------------------------------
 *.pkl
+*.joblib
+*.onnx
+*.h5
+*.pt
+/models/
+
+# ---------------------------------------------------------------------------
+# Secrets — never commit
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---------------------------------------------------------------------------
+# Generated EDA / profiling reports
+#
+# The reports under resources/profiling/ and src/resources/ are deliberately
+# *not* ignored: they are already tracked and are the evidence behind the
+# modelling choices documented in the notebooks. Regenerate them with
+# src/main.py rather than editing by hand.
+#
+# Only notebooks' execution scratch is ignored:
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Notebooks
+# ---------------------------------------------------------------------------
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ---------------------------------------------------------------------------
+# Tooling / OS / editors
+# ---------------------------------------------------------------------------
+.idea/
+.vscode/
+!.vscode/extensions.json
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Coverage / test output
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+coverage.xml

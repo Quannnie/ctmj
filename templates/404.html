@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block title %}Không tìm thấy trang — CJPS{% endblock %}
+
+{% block content %}
+<div class="page" style="padding-block: var(--s-8);">
+  <div style="max-width: 40rem;">
+    <p class="eyebrow">Lỗi 404</p>
+    <h1 style="font-size: var(--step-4); margin-bottom: var(--s-4);">
+      Trang này không tồn tại.
+    </h1>
+    <p class="lede">
+      Không có nội dung nào ở đường dẫn <code>{{ request_path }}</code>. Có thể
+      liên kết đã cũ hoặc định dạng sai chính tả.
+    </p>
+
+    <div style="display: flex; gap: var(--s-3); flex-wrap: wrap; margin-top: var(--s-5);">
+      <a class="btn btn--accent" href="{% url 'home' %}">Về trang tổng quan</a>
+      <a class="btn btn--ghost" href="{% url 'predict' %}">Mở trang dự báo</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
