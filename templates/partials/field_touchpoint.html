@@ -1,0 +1,27 @@
+{% load ctmj_tags %}
+{% comment %}
+  Touchpoint picker.
+
+  Touchpoint names are long, so this uses a datalist-backed input: the browser
+  offers the full list while the control stays a plain text field. The value is
+  validated server-side against the reference table, which accepts either the
+  code or the name.
+
+  Params: name, label, hint, touchpoints (list of {value, label})
+{% endcomment %}
+<div class="field">
+  {% with field_id='f-'|add:name error_id='e-'|add:name hint_id='h-'|add:name list_id='l-'|add:name message=errors|field_error:name value=submitted|field_value:name %}
+    <label class="field__label" for="{{ field_id }}">{{ label }}</label>
+
+    <input class="field__control" id="{{ field_id }}" name="{{ name }}" type="text" list="{{ list_id }}" placeholder="Nhập mã hoặc tên điểm chạm" value="{{ value }}" autocomplete="off" required {% if message %}aria-invalid="true" aria-describedby="{{ error_id }}"{% else %}aria-describedby="{{ hint_id }}"{% endif %}>
+
+    <datalist id="{{ list_id }}">
+      {% for point in touchpoints %}
+        <option value="{{ point.value }}">{{ point.label }}</option>
+      {% endfor %}
+    </datalist>
+
+    {% if hint %}<p class="field__hint" id="{{ hint_id }}">{{ hint }}</p>{% endif %}
+    {% if message %}<p class="field__error" id="{{ error_id }}">{{ message }}</p>{% endif %}
+  {% endwith %}
+</div>

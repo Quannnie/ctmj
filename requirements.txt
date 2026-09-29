@@ -1,0 +1,25 @@
+# CJPS — Customer Journey Prediction System
+# Runtime dependencies for the Django web application.
+#
+# The ML research pipeline in src/ additionally needs the optional
+# "notebook" extra (matplotlib, seaborn, ydata-profiling, openpyxl, jupyter).
+
+Django>=5.2,<6.0
+
+# Serves collected static files from the app container in production.
+whitenoise>=6.7
+
+# Optional: reads .env at startup. The app works without it (see settings.py).
+python-dotenv>=1.0
+
+# Model serialisation / inference
+joblib>=1.4
+numpy>=1.26
+pandas>=2.2
+scikit-learn>=1.5
+scipy>=1.13
+
+# Remote model store (Hugging Face Hub). Only needed when
+# CTMJ_MODEL_SOURCE=hf; local model directories need none of this.
+fsspec>=2024.6
+huggingface_hub>=0.25

@@ -1,52 +1,77 @@
-import os
-import joblib
-from django.apps import AppConfig
-from django.conf import settings
-import fsspec
+"""Application configuration.
 
-print("Hệ thống Django đang khởi động apps")
+Model artefacts are loaded lazily on a background thread. ``ready()`` returns
+immediately so the first HTTP response is never delayed by a multi-second
+joblib deserialisation, and a loading failure degrades to a visible status
+message instead of a crash. See :mod:`ctmj.services.registry`.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import sys
+
+from django.apps import AppConfig
+
+logger = logging.getLogger("ctmj")
 
 
 class CtmjConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'ctmj'
-    verbose_name = 'Hệ thống Dự báo CTMJ'
-    loaded_resources = {}
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "ctmj"
+    verbose_name = "Hệ thống Dự báo CJPS"
 
-    def ready(self):
-        BUCKET_ID = "quanghuynh0122/datamining_models"
+    #: Process-wide model registry. Populated during ``ready()``.
+    registry = None
 
-        # Định nghĩa danh sách file cần nạp (Key là tên bạn muốn gọi ở views, Value là tên file trên Bucket)
-        RESOURCES_TO_LOAD = {
-            "gradient_boosting": "GradientBoostingClassifier_model.pkl",
-            "dbscan": "dbscan_clustering_model.pkl",
-            "spectral": "spectral_clustering_model.pkl",
-            "predicting_preprocessor": "s1_predicting_preprocessor.pkl",
-            "user_data_preprocessor": "user_data_preprocessor.pkl"
+    def ready(self) -> None:
+        # Importing models here would trigger AppRegistryNotReady during
+        # migrations, so the registry is constructed from settings only.
+        from ctmj.services.registry import ModelRegistry
+
+        # Assign through the class, not ``self``. ``ready()`` runs on an
+        # AppConfig *instance*, so ``self.registry = ...`` would create an
+        # instance attribute while ``CtmjConfig.registry`` — the name the views
+        # use — still reads ``None``.
+        cls = type(self)
+        if cls.registry is None:
+            cls.registry = ModelRegistry()
+
+        if self._should_defer_loading():
+            logger.debug("Skipping model loading for this process (%s).", self._process_kind())
+            return
+
+        cls.registry.start_background_load()
+
+    # Commands that never serve HTTP requests. Starting a background download
+    # for these would make `migrate` and `test` hang on a cold model cache.
+    _NON_SERVING_COMMANDS = frozenset(
+        {
+            "migrate",
+            "makemigrations",
+            "test",
+            "collectstatic",
+            "shell",
+            "check",
+            "seed_reference_data",
+            "build_demo_models",
+            "make_favicon",
         }
+    )
 
-        # Kiểm tra luồng chạy chính của Django để tránh bị lặp 2 lần
-        if os.environ.get('RUN_MAIN') == 'true' or not settings.DEBUG:
+    @classmethod
+    def _process_kind(cls) -> str:
+        """Best-effort identification of the running command."""
+        argv = sys.argv[1:] if sys.argv and sys.argv[0].endswith((".py", ".exe")) else []
+        for arg in argv:
+            token = arg.lstrip("-")
+            if token in cls._NON_SERVING_COMMANDS:
+                return token
+        return "serve" if "runserver" in argv or not argv else "unknown"
 
-            print("\n" + "=" * 50)
-            hf_token = input("HUGGING FACE TOKEN: ").strip()
-            print("=" * 50)
-
-            if not hf_token:
-                print("Chưa nhập Token!")
-                return
-            try:
-                # Khởi tạo hệ thống file với token vừa nhập
-                fs = fsspec.filesystem("hf", token=hf_token)
-
-                for resource_key, file_name in RESOURCES_TO_LOAD.items():
-                    bucket_file_path = f"buckets/{BUCKET_ID}/{file_name}"
-                    print(f"Đang load {file_name}")
-
-                    with fs.open(bucket_file_path, "rb") as f:
-
-                        CtmjConfig.loaded_resources[resource_key] = joblib.load(f)
-                print("Load model thành công")
-
-            except Exception as e:
-                print("Có lỗi xảy ra: ", e)
+    @classmethod
+    def _should_defer_loading(cls) -> bool:
+        if os.environ.get("CTMJ_SKIP_MODEL_LOAD", "").lower() in {"1", "true", "yes"}:
+            return True
+        return cls._process_kind() in cls._NON_SERVING_COMMANDS

@@ -1,0 +1,25 @@
+{% comment %}
+  Pipeline specification. Kept in a partial so the home page and the
+  prediction page can never disagree about how the system works.
+{% endcomment %}
+<table class="spec">
+  <caption class="visually-hidden">Các bước trong quy trình dự báo của CJPS</caption>
+  <tbody>
+    <tr>
+      <th scope="row">1 · Thu thập</th>
+      <td>Hồ sơ nhân khẩu học (tuổi, quy mô hộ, thu nhập, học vấn, nghề, vùng, tầng lớp xã hội, giai đoạn sống) cùng hai kênh tương tác gần nhất.</td>
+    </tr>
+    <tr>
+      <th scope="row">2 · Lọc nhiễu</th>
+      <td>DBSCAN đo khoảng cách tới các cụm lõi. Hồ sơ nằm xa mọi cụm lõi quá ngưỡng <span class="mono">eps</span> được gán nhãn nhiễu và không đi tiếp.</td>
+    </tr>
+    <tr>
+      <th scope="row">3 · Gán phân khúc</th>
+      <td>Với hồ sơ còn lại, Spectral Clustering so vector đã chuẩn hóa với các vector riêng của từng cụm; cụm gần nhất là phân khúc của hồ sơ.</td>
+    </tr>
+    <tr>
+      <th scope="row">4 · Dự báo</th>
+      <td>Gradient Boosting nhận hồ sơ cùng mã phân khúc, trả về xác suất cho toàn bộ từ điển điểm chạm. Hệ thống giữ ba điểm cao nhất.</td>
+    </tr>
+  </tbody>
+</table>

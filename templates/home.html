@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+
+{% comment %}
+  Analyst console, not a marketing page.
+
+  The previous revision used a large display hero and generous whitespace —
+  the visual grammar of a landing page — for what is a data tool. The
+  ui-ux-pro-max design system resolved this to "Data-Dense Dashboard /
+  Minimalism & Swiss" at density 8/10, so this page leads with the working
+  numbers, keeps the type small, and drops the decorative furniture.
+{% endcomment %}
+
+{% block content %}
+
+{% comment %} Masthead band: working context, not a tagline. {% endcomment %}
+<section class="page" style="padding-block: var(--sp-5) var(--sp-4);">
+  <div class="split">
+    <div>
+      <p class="label label--primary">CJPS · Customer Journey Prediction</p>
+      <h1 style="margin-bottom: var(--sp-2);">Dự báo bước tiếp theo trong hành trình</h1>
+      <p class="lede" style="margin-bottom: 0;">
+        Nhập hồ sơ nhân khẩu học và hai kênh tương tác gần nhất. Hệ thống gán
+        phân khúc, sau đó trả về ba điểm chạm có xác suất cao nhất kèm mô tả
+        hành vi.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="panel__head">
+        <h2 class="panel__title">Quy trình</h2>
+      </div>
+      <div class="panel__body">
+        <ol class="steps">
+          <li>
+            <span class="steps__index" aria-hidden="true">01</span>
+            <div>
+              <span class="steps__title">Phân cụm</span>
+              <span class="steps__body">DBSCAN lọc nhiễu, Spectral Clustering gán cụm.</span>
+            </div>
+          </li>
+          <li>
+            <span class="steps__index" aria-hidden="true">02</span>
+            <div>
+              <span class="steps__title">Dự báo</span>
+              <span class="steps__body">Gradient Boosting xếp hạng {{ touchpoint_count|default:"20" }} điểm chạm.</span>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rule">
+
+{% comment %} Facts first, at a glance. {% endcomment %}
+<section class="page" style="padding-block: var(--sp-4);">
+  <dl class="kpi-row" style="margin: 0;" data-reveal>
+    <div class="kpi">
+      <dd class="kpi__value">{{ touchpoint_count|default:"—" }}</dd>
+      <dt class="kpi__label">điểm chạm</dt>
+    </div>
+    <div class="kpi">
+      <dd class="kpi__value">{{ cluster_count|default:"—" }}</dd>
+      <dt class="kpi__label">phân khúc</dt>
+    </div>
+    <div class="kpi">
+      <dd class="kpi__value">3</dd>
+      <dt class="kpi__label">gợi ý mỗi lần</dt>
+    </div>
+    <div class="kpi">
+      <dd class="kpi__value">2</dd>
+      <dt class="kpi__label">kênh gần nhất</dt>
+    </div>
+    <div class="kpi">
+      <dd class="kpi__value">10</dd>
+      <dt class="kpi__label">biến hộ sơ</dt>
+    </div>
+  </dl>
+</section>
+
+{% comment %} Use cases — a reference table, not marketing cards. {% endcomment %}
+<section class="page" style="padding-block: var(--sp-4) var(--sp-5);">
+  <div class="section-head" data-reveal>
+    <h2 class="section-head__title">Cách dùng kết quả</h2>
+    <p class="section-head__body muted">
+      Mỗi dự báo trả về một phân khúc và ba điểm chạm kèm xác suất.
+    </p>
+  </div>
+
+  <div class="panel" data-reveal>
+    <table class="spec">
+      <caption class="visually-hidden">Ba cách dùng kết quả dự báo</caption>
+      <thead class="visually-hidden">
+        <tr><th scope="col">Mục đích</th><th scope="col">Cách dùng</th><th scope="col">Tín hiệu</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Sắp xếp ngân sách</th>
+          <td>Đọc mã cụm cùng mô tả phân khúc trước khi phân bổ ngân sách theo phân khúc.</td>
+          <td class="mono">cụm 0 – 2</td>
+        </tr>
+        <tr>
+          <th scope="row">Chọn kênh tiếp cận</th>
+          <td>Phân biệt điểm chạm chủ động (tìm kiếm, website, app) với điểm chạm bị đẩy (banner, email, retargeting).</td>
+          <td class="mono">mã #12, #15, #21</td>
+        </tr>
+        <tr>
+          <th scope="row">Sàng lọc hồ sơ</th>
+          <td>Phân khúc nhiễu nghĩa là hồ sơ nằm ngoài phạm vi mô hình: chuyển sang nuôi dưỡng thay vì chạy chiến dịch.</td>
+          <td class="mono">cụm −1</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% comment %} Pipeline — single source of truth, shared with the predict page. {% endcomment %}
+<section class="page" id="pipeline" style="padding-block: var(--sp-4) var(--sp-5);">
+  <div class="section-head" data-reveal>
+    <h2 class="section-head__title">Quy trình xử lý</h2>
+    <p class="section-head__body muted">
+      Bốn bước, hai mô hình, chạy hoàn toàn trong bộ nhớ.
+    </p>
+  </div>
+
+  <div class="panel" data-reveal>
+    <div class="panel__body">
+      {% include 'partials/pipeline_table.html' %}
+    </div>
+  </div>
+</section>
+
+{% comment %} Operational state, stated plainly. {% endcomment %}
+{% if registry_status %}
+<section class="page" style="padding-bottom: var(--sp-5);">
+  <div class="notice {% if registry_status.ready %}notice--ok{% elif registry_status.state.value == 'loading' %}notice--info{% else %}notice--warn{% endif %}">
+    <span aria-hidden="true" style="color: inherit;">
+      {% if registry_status.ready %}
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 8.5 3.5 3.5 7.5-8"/></svg>
+      {% else %}
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4.5v4"/><circle cx="8" cy="11.5" r=".9" fill="currentColor" stroke="none"/></svg>
+      {% endif %}
+    </span>
+    <div>
+      <p class="notice__title">Trạng thái mô hình</p>
+      <p class="notice__body">{{ registry_status.message }}</p>
+      {% if not registry_status.ready %}
+        <p class="notice__body" style="margin-top: var(--sp-2);">
+          <a href="{% url 'predict' %}">Mở trang dự báo</a> để xem hướng dẫn.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}

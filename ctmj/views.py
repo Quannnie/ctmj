@@ -1,203 +1,148 @@
+"""HTTP layer.
+
+Deliberately thin: parse and validate the request, call
+:mod:`ctmj.services.predictor`, render. No model loading, no dataframe
+construction and no database fallbacks live here.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import render
-import joblib
-import pandas as pd
-import os
-from .models import (
-    GenderID, BAS_werkzaamheid_resp, SPSS_Regio5,
-    BAS_bruto_jaarinkomen, AFG_sk2015, BAS_voltooide_opleiding8_resp,
-    SPSS_Lifestage, type_touch, cluster_info  # 🌟 Đã import thêm cluster_info ở đây
+from django.views.decorators.http import require_GET
+
+from ctmj.apps import CtmjConfig
+from ctmj.models import (
+    AFG_sk2015,
+    BAS_bruto_jaarinkomen,
+    BAS_werkzaamheid_resp,
+    BAS_voltooide_opleiding8_resp,
+    GenderID,
+    SPSS_Lifestage,
+    SPSS_Regio5,
+    type_touch,
 )
-from .apps import CtmjConfig
-import numpy as np
-from scipy.spatial.distance import cdist
+from ctmj.services import formdata, predictor, reference_data
+
+logger = logging.getLogger("ctmj.views")
 
 
-def home_view(request):
-    return render(request, 'home.html')
+def _registry():
+    return CtmjConfig.registry
 
 
-def predict_view(request):
-    result = None
-    error_message = None
-    form_data = {}
+def _options(model: Any, pk: str, label: str) -> list[dict[str, Any]]:
+    """Normalise a lookup queryset into uniform ``{value, label}`` pairs.
 
-    # Lấy model và processor từ RAM (AppConfig)
-    user_processor = CtmjConfig.loaded_resources.get('user_data_preprocessor')
-    predict_processor = CtmjConfig.loaded_resources.get('predicting_preprocessor')
+    The templates then never need to know the real model or which attribute
+    holds the code, so a column rename touches the view instead of every
+    template.
+    """
+    return [
+        {"value": getattr(obj, pk), "label": getattr(obj, label)}
+        for obj in model.objects.order_by(pk)
+    ]
 
-    model_dbscan = CtmjConfig.loaded_resources.get('dbscan')
-    model_spectral = CtmjConfig.loaded_resources.get('spectral')
-    model_gb = CtmjConfig.loaded_resources.get('gradient_boosting')
 
-    if request.method == 'POST':
-        try:
-            # 1. Thu thập và kiểm tra dữ liệu từ Form gửi lên
-            required_fields = [
-                'GenderID', 'Age', 'SPSS_Regio5', 'BAS_huishoudgrootte',
-                'BAS_werkzaamheid_resp', 'BAS_bruto_jaarinkomen',
-                'afg_kinderen_huishouden', 'AFG_sk2015',
-                'BAS_voltooide_opleiding8_resp', 'SPSS_Lifestage',
-                'step_1_channel', 'step_2_channel'
-            ]
+def _lookup_context() -> dict[str, list[dict[str, Any]]]:
+    """Every dropdown population, ordered for stable rendering.
 
-            # Check điền thiếu thông tin
-            for field in required_fields:
-                val = request.POST.get(field)
-                if not val or val.strip() == "":
-                    raise ValueError(f"Thiếu thông tin cho trường: {field}")
-                form_data[field] = val
-
-            # Validate các trường dữ liệu dạng số tự do nhập
-            try:
-                age = int(form_data['Age'])
-                kids = int(form_data['afg_kinderen_huishouden'])
-                h_grootte = int(form_data['BAS_huishoudgrootte'])
-
-                if age < 0 or age > 120:
-                    raise ValueError("Tuổi phải nằm trong khoảng từ 0 đến 120.")
-                if kids < 0 or h_grootte <= 0:
-                    raise ValueError("Số trẻ em hoặc quy mô hộ gia đình không hợp lệ.")
-            except ValueError as ve:
-                if "invalid literal" in str(ve):
-                    raise ValueError("Tuổi, Số trẻ em và Quy mô gia đình phải là số nguyên.")
-                else:
-                    raise ve
-
-            # 2. XÂY DỰNG DATAFRAME ĐẦU VÀO
-            raw_input_data = pd.DataFrame([{
-                'BAS_huishoudgrootte': h_grootte,
-                'BAS_werkzaamheid_resp': int(form_data['BAS_werkzaamheid_resp']),
-                'afg_kinderen_huishouden': kids,
-                'BAS_voltooide_opleiding8_resp': int(form_data['BAS_voltooide_opleiding8_resp']),
-                'SPSS_Lifestage': int(form_data['SPSS_Lifestage']),
-                'GenderID': int(form_data['GenderID']),
-                'SPSS_Regio5': int(form_data['SPSS_Regio5']),
-                'BAS_bruto_jaarinkomen': int(form_data['BAS_bruto_jaarinkomen']),
-                'AFG_sk2015': int(form_data['AFG_sk2015']),
-                'Age': age,
-                'step2': int(form_data['step_1_channel']),
-                'step3': int(form_data['step_2_channel'])
-            }])
-
-            # --- BƯỚC I: XỬ LÝ PHÂN CỤM LAI ---
-            clustering_feature = [
-                'BAS_huishoudgrootte', 'BAS_werkzaamheid_resp', 'afg_kinderen_huishouden',
-                'BAS_voltooide_opleiding8_resp', 'SPSS_Lifestage', 'GenderID',
-                'SPSS_Regio5', 'BAS_bruto_jaarinkomen', 'AFG_sk2015', 'Age'
-            ]
-            df_cluster = raw_input_data[clustering_feature]
-
-            if user_processor is None or model_dbscan is None or model_spectral is None:
-                raise ValueError("Bộ tiền xử lý hoặc các mô hình Phân cụm (DBSCAN/Spectral) chưa được nạp.")
-
-            X_cluster_scaled = user_processor.transform(df_cluster)
-
-            # 1. KIỂM TRA ĐIỀU KIỆN NGOẠI LAI BẰNG DBSCAN
-            if hasattr(model_dbscan, 'components_') and model_dbscan.components_.shape[0] > 0:
-                dbscan_dists = cdist(X_cluster_scaled, model_dbscan.components_, metric='euclidean')
-                closest_core_idx = np.argmin(dbscan_dists[0])
-                dbscan_temp_label = int(model_dbscan.labels_[model_dbscan.core_sample_indices_[closest_core_idx]])
-            else:
-                dbscan_temp_label = -1
-
-            # 2. RẼ NHÁNH LOGIC THEO YÊU CẦU
-            if dbscan_temp_label == -1:
-                final_label_val = -1
-            else:
-                if hasattr(model_spectral, 'components_'):
-                    spectral_dists = cdist(X_cluster_scaled, model_spectral.components_, metric='euclidean')
-                    closest_spec_idx = np.argmin(spectral_dists[0])
-                    final_label_val = int(model_spectral.labels_[closest_spec_idx])
-                elif hasattr(model_dbscan, 'components_'):
-                    spectral_dists = cdist(X_cluster_scaled, model_dbscan.components_, metric='euclidean')
-                    closest_idx_in_train = model_dbscan.core_sample_indices_[np.argmin(spectral_dists[0])]
-                    final_label_val = int(model_spectral.labels_[closest_idx_in_train])
-                else:
-                    final_label_val = dbscan_temp_label
-
-            raw_input_data['final_label'] = final_label_val
-
-            # --- BƯỚC II: XỬ LÝ DỰ BÁO TOP 3 KÊNH TIẾP XÚC (GRADIENT BOOSTING) ---
-            predict_features = [
-                'BAS_werkzaamheid_resp', 'afg_kinderen_huishouden', 'GenderID',
-                'SPSS_Regio5', 'final_label', 'step2', 'step3', 'Age'
-            ]
-            df_predict = raw_input_data[predict_features]
-
-            if predict_processor is None or model_gb is None:
-                raise ValueError("Bộ dự báo hoặc mô hình Gradient Boosting chưa được nạp vào RAM.")
-
-            if hasattr(model_gb, 'best_estimator_'):
-                estimator = model_gb.best_estimator_
-            else:
-                estimator = model_gb
-
-            X_predict_scaled = predict_processor.transform(df_predict)
-
-            probabilities = estimator.predict_proba(X_predict_scaled)[0]
-            class_labels = estimator.classes_
-
-            prob_list = []
-            for label, prob in zip(class_labels, probabilities):
-                prob_list.append({
-                    'channel_id': int(label),
-                    'probability': float(prob) * 100
-                })
-
-            prob_list = sorted(prob_list, key=lambda x: x['probability'], reverse=True)
-            top_3_channels = prob_list[:3]
-
-            # =======================================================
-            # 🚀 ĐOẠN ĐƯỢC THÊM MỚI: TRUY VẤN ĐỘNG DATABASE CHO RESULT
-            # ========================================================
-
-            # 1. Khởi tạo cục dữ liệu gốc ban đầu
-            result = {
-                'status': 'success',
-                'cluster': final_label_val,
-                'top_3_probabilities': top_3_channels
-            }
-
-            # 2. Lấy thông tin Cluster thực tế (Tên cụm và mô tả tiếng Việt) từ bảng cluster_info
-            try:
-                cluster_obj = cluster_info.objects.get(cluster_id=final_label_val)
-                result['cluster_name'] = cluster_obj.name
-                result['cluster_description'] = cluster_obj.description
-            except cluster_info.DoesNotExist:
-                result['cluster_name'] = f"Nhóm phân cụm đặc trưng #{final_label_val}"
-                result[
-                    'cluster_description'] = "Hệ thống ghi nhận hành vi thuộc nhóm đặc trưng số này từ tệp huấn luyện."
-
-            # 3. Lấy thông tin Tên kênh (Name) và Mô tả chi tiết (Description) từ bảng type_touch
-            for item in result['top_3_probabilities']:
-                try:
-                    touch_obj = type_touch.objects.get(code=item['channel_id'])
-                    item['channel_name'] = touch_obj.name
-                    item['channel_description'] = touch_obj.description
-                except type_touch.DoesNotExist:
-                    item['channel_name'] = "Kênh hành trình mới"
-                    item[
-                        'channel_description'] = "Hệ thống khuyến nghị tiếp cận và thiết lập chiến dịch qua kênh tương tác này."
-
-            print(result)
-        except ValueError as e:
-            error_message = str(e)
-        except Exception as e:
-            error_message = f"Đã xảy ra lỗi hệ thống khi dự báo: {str(e)}"
-
-    # 3. Truy vấn dữ liệu từ SQLite đưa vào context hiển thị Form Dropdown
-    context = {
-        'genders': GenderID.objects.all(),
-        'jobs': BAS_werkzaamheid_resp.objects.all(),
-        'regions': SPSS_Regio5.objects.all(),
-        'incomes': BAS_bruto_jaarinkomen.objects.all(),
-        'social_classes': AFG_sk2015.objects.all(),
-        'educations': BAS_voltooide_opleiding8_resp.objects.all(),
-        'lifestages': SPSS_Lifestage.objects.all(),
-        'touchpoints': type_touch.objects.all(),
-        'result': result,
-        'error_message': error_message,
-        'saved_data': form_data
+    Ordering is explicit so the UI never reshuffles between requests, which
+    would silently change the meaning of an already-submitted value.
+    """
+    return {
+        "genders": _options(GenderID, "gender_code", "gender_name"),
+        "jobs": _options(BAS_werkzaamheid_resp, "code", "name"),
+        "regions": _options(SPSS_Regio5, "code", "name"),
+        "incomes": _options(BAS_bruto_jaarinkomen, "code", "name"),
+        "social_classes": _options(AFG_sk2015, "code", "name"),
+        "educations": _options(BAS_voltooide_opleiding8_resp, "code", "name"),
+        "lifestages": _options(SPSS_Lifestage, "code", "name"),
+        "touchpoints": _options(type_touch, "code", "name"),
     }
 
-    return render(request, 'predict.html', context)
+
+@require_GET
+def home_view(request: HttpRequest) -> HttpResponse:
+    """Landing page with an honest summary of the model pipeline."""
+    registry = _registry()
+    return render(
+        request,
+        "home.html",
+        {
+            "touchpoint_count": type_touch.objects.count(),
+            "cluster_count": max(len(reference_data.CLUSTERS) - 1, 0),
+            "registry_status": registry.status if registry else None,
+        },
+    )
+
+
+def predict_view(request: HttpRequest) -> HttpResponse:
+    """Render the prediction form, and run inference on POST.
+
+    On a failed submission the form is redrawn with field-level errors and the
+    submitted values intact, so one bad field never forces the user to retype
+    the other eleven.
+    """
+    registry = _registry()
+    context = _lookup_context()
+    context["registry_status"] = registry.status if registry else None
+
+    if request.method == "GET":
+        return render(request, "predict.html", context)
+
+    validated = formdata.validate_prediction_form(request.POST)
+    context["submitted"] = validated.submitted
+    context["errors"] = validated.errors
+
+    if not validated.is_valid:
+        context["error_summary"] = validated.error_messages
+        logger.info("Rejected prediction form: %s", validated.error_messages)
+        return render(request, "predict.html", context, status=400)
+
+    status = registry.status
+    if registry is None or not registry.ready():
+        message = status.message if status else "Bộ mô hình chưa sẵn sàng."
+        context["error_summary"] = [message]
+        logger.warning("Prediction requested while model state is %s", status.state if status else "none")
+        return render(request, "predict.html", context, status=503)
+
+    try:
+        context["prediction"] = predictor.predict(registry, validated)
+    except predictor.PredictionError as exc:
+        logger.warning("Prediction failed: %s", exc)
+        context["error_summary"] = [str(exc)]
+        return render(request, "predict.html", context, status=500)
+    except Exception:
+        logger.exception("Unexpected error during prediction")
+        context["error_summary"] = ["Hệ thống gặp lỗi khi dự báo. Vui lòng thử lại sau."]
+        return render(request, "predict.html", context, status=500)
+
+    return render(request, "predict.html", context)
+
+
+def page_not_found(request: HttpRequest, exception: Exception | None = None) -> HttpResponse:
+    """Branded 404. Wired through ``handler404`` so it applies in production."""
+    return render(request, "404.html", {"request_path": request.path}, status=404)
+
+
+@require_GET
+def health_view(request: HttpRequest) -> HttpResponse:
+    """Liveness probe that also reports model readiness.
+
+    Returns 503 while artefacts are missing or still loading, so an
+    orchestrator can hold traffic back instead of serving a broken predictor.
+    """
+    registry = _registry()
+    status = registry.status if registry else None
+    ready = bool(registry and registry.ready())
+    return JsonResponse(
+        {
+            "status": "ok" if ready else "degraded",
+            "models": status.as_dict() if status else None,
+        },
+        status=200 if ready else 503,
+    )

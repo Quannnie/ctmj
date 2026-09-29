@@ -1,0 +1,10 @@
+# Notebook / EDA extras for the src/ research pipeline.
+# Install with:  pip install -r requirements.txt -r requirements-notebook.txt
+-r requirements.txt
+
+matplotlib>=3.8
+seaborn>=0.13
+openpyxl>=3.1
+scikit-image>=0.22
+ydata-profiling>=4.8
+jupyterlab>=4.2
