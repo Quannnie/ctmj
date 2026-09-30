@@ -105,6 +105,34 @@ class Prediction:
         return sum(c.probability for c in self.channels)
 
     @property
+    def confidence_value(self) -> str:
+        """Dot-decimal confidence, for a CSS width.
+
+        Interpolated into a ``--share`` custom property. A comma decimal
+        separator would make the declaration invalid, the browser would drop
+        the whole rule, and the bar would silently render empty -- which reads
+        as "no confidence" rather than as a bug. See
+        :attr:`ChannelPrediction.probability_value`.
+        """
+        return f"{self.confidence:.2f}"
+
+    @property
+    def tail_probability(self) -> float:
+        """Probability mass outside the returned top-N, as a percentage."""
+        return max(0.0, 100.0 - self.confidence)
+
+    @property
+    def tail_value(self) -> str:
+        """Dot-decimal remainder, for a CSS width. See
+        :attr:`ChannelPrediction.probability_value`."""
+        return f"{self.tail_probability:.2f}"
+
+    @property
+    def tail_candidates(self) -> int:
+        """How many touchpoints the model scored but the UI does not show."""
+        return max(len(self.distribution) - len(self.channels), 0)
+
+    @property
     def noise_distance_value(self) -> str:
         """Dot-decimal DBSCAN distance. See ChannelPrediction.probability_value."""
         if self.noise_distance is None:

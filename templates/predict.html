@@ -1,223 +1,323 @@
 {% extends 'base.html' %}
 
 {% comment %}
+  Prediction console.
+
+  Two earlier revisions stacked the form above the results, which meant a
+  submit scrolled the page and the analyst had to re-read a form they had
+  already filled correctly. The result now lives in a sticky right rail: the
+  profile stays on screen next to the answer it produced.
+
+  Below 1080px the rail falls under the form, because two 190px-wide columns
+  of selects are not a layout anyone can use on a laptop in a train.
+
   Number formatting note: Django localises floats with a comma for vi-VN,
-  which is right for display ("41,2%") but wrong for machine consumption.
+  which is right for display ("27,4%") but wrong for machine consumption.
   ``parseFloat("15,50")`` yields 15 and ``width: 15,50%`` is invalid CSS, so
-  the animated values come from pre-formatted ``*_value`` properties on the
+  animated values come from pre-formatted ``*_value`` properties on the
   predictor (see ctmj/services/predictor.py) rather than from a template
   filter.
 {% endcomment %}
 
 {% block title %}Dự báo — CJPS{% endblock %}
-{% block description %}Nhập hồ sơ khách hàng và hai kênh tương tác gần nhất để nhận phân khúc và ba điểm chạm tiếp theo có xác suất cao nhất.{% endblock %}
+{% block description %}Nhập hồ sơ khách hàng và hai kênh tương tác gần nhất để nhận phân khúc và ba điểm chạm tiếp theo kèm xác suất.{% endblock %}
 
 {% block content %}
-<div class="page" style="padding-block: var(--sp-5) var(--sp-6);">
+<div class="page" style="padding-block: var(--sp-6) var(--sp-7);">
 
-  <header style="margin-bottom: var(--sp-4);">
+  <header style="margin-bottom: var(--sp-5); max-width: 68ch;">
     <p class="label label--primary">CJPS · Dự báo</p>
-    <h1 style="margin-bottom: var(--sp-2);">Nhập hồ sơ và hành trình gần đây</h1>
-    <p class="lede" style="margin-bottom: 0;">
-      Mười hai trường, tất cả bắt buộc. Mọi mã phải có trong danh mục của hệ
-      thống — giá trị không hợp lệ bị từ chối trước khi chạy mô hình.
+    <h1 class="page-title" style="margin-block: var(--sp-2) var(--sp-3);">Nhập hồ sơ và hành trình gần đây</h1>
+    <p class="lede">
+      Mười hai trường, tất cả bắt buộc. Mỗi mã phải có trong danh mục của hệ
+      thống — giá trị không hợp lệ bị chặi trước khi chạy mô hình.
     </p>
   </header>
-    {# Error notices: 400 on bad input, 503 when models are absent. #}
-  {% if error_summary %}
-    <div class="notice notice--danger"
-         style="margin-bottom: var(--s-5);"
-         data-error-summary
-         role="alert"
-         tabindex="-1"
-         aria-labelledby="error-summary-title">
-      <span aria-hidden="true" style="font-weight: 700;">✕</span>
-      <div>
-        <p class="notice__title" id="error-summary-title">
-          {% if errors|length == 1 %}
-            Có 1 trường cần sửa
-          {% else %}
-            Có {{ errors|length }} trường cần sửa
-          {% endif %}
-        </p>
-        <ul class="notice__body">
-          {% for message in error_summary %}
-            <li>{{ message }}</li>
-          {% endfor %}
-        </ul>
-      </div>
-    </div>
-  {% endif %}
-    {# Operational notice when the artefacts are missing or still loading. #}
-  {% if registry_status and not registry_status.ready %}
-    <div class="notice notice--warn" style="margin-bottom: var(--s-5);" role="status">
-      <span aria-hidden="true" style="font-weight: 700;">!</span>
-      <div>
-        <p class="notice__title">Mô hình chưa sẵn sàng</p>
-        <p class="notice__body">
-          {{ registry_status.message }} Bạn vẫn có thể điền và kiểm tra biểu mẫu;
-          kết quả dự báo sẽ hiện sau khi bộ mô hình nạp xong.
-        </p>
-      </div>
-    </div>
-  {% endif %}
-    {# The form works without JavaScript; app.js only adds affordances. #}
-  <form method="post" action="{% url 'predict' %}" id="prediction-form" novalidate>
-    {% csrf_token %}
 
-    <div class="stack">
-      {# Ten clustering inputs. #}
-      <fieldset class="panel" style="margin: 0; padding: 0;">
-        <div class="panel__head">
-          <h2 class="panel__title">01 · Hồ sơ nhân khẩu học</h2>
-          <p class="panel__hint">10 biến cho tầng phân cụm</p>
-        </div>
-
-        <div class="panel__body">
-          <div class="field-grid">
-            {% include 'partials/field_select.html' with name='GenderID' label='Giới tính' options=genders hint='Mã 1 hoặc 2.' %}
-            {% include 'partials/field_select.html' with name='SPSS_Regio5' label='Vùng địa lý' options=regions %}
-            {% include 'partials/field_select.html' with name='AFG_sk2015' label='Tầng lớp xã hội (CBS 2015)' options=social_classes %}
-            {% include 'partials/field_select.html' with name='BAS_werkzaamheid_resp' label='Tình trạng việc làm' options=jobs %}
-            {% include 'partials/field_select.html' with name='BAS_bruto_jaarinkomen' label='Tổng thu nhập hộ mỗi năm' options=incomes %}
-            {% include 'partials/field_select.html' with name='BAS_voltooide_opleiding8_resp' label='Trình độ học vấn' options=educations %}
-            {% include 'partials/field_select.html' with name='SPSS_Lifestage' label='Giai đoạn cuộc sống' options=lifestages %}
-
-            {% include 'partials/field_number.html' with name='Age' label='Tuổi' min=0 max=120 hint='Số nguyên từ 0 đến 120.' %}
-            {% include 'partials/field_number.html' with name='BAS_huishoudgrootte' label='Quy mô hộ gia đình' min=1 max=30 hint='Tổng số người trong hộ.' %}
-            {% include 'partials/field_number.html' with name='afg_kinderen_huishouden' label='Số trẻ em trong hộ' min=0 max=30 hint='Nhập 0 nếu không có trẻ em.' %}
+  <div class="console">
+    {# ---------------------------------------------------------------- #}
+    {# Left column: the form.                                             #}
+    {# ---------------------------------------------------------------- #}
+    <div>
+      {% if error_summary %}
+        <div class="notice notice--danger"
+             style="margin-bottom: var(--sp-4);"
+             data-error-summary
+             role="alert"
+             tabindex="-1"
+             aria-labelledby="error-summary-title">
+          <span aria-hidden="true" style="font-weight: 700;">!</span>
+          <div>
+            <p class="notice__title" id="error-summary-title">
+              {% if error_summary|length == 1 %}
+                Có 1 trường cần sửa
+              {% else %}
+                Có {{ error_summary|length }} trường cần sửa
+              {% endif %}
+            </p>
+            {% if error_items %}
+              <ul class="notice__body">
+                {% for item in error_items %}
+                  <li><a href="#{{ item.anchor }}">{{ item.label }}: {{ item.message }}</a></li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <ul class="notice__body">
+                {% for message in error_summary %}
+                  <li>{{ message }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
           </div>
         </div>
-      </fieldset>
-      {# The two most recent touchpoints; order is significant. #}
-      <fieldset class="panel" style="margin: 0; padding: 0;">
-        <div class="panel__head">
-          <h2 class="panel__title">02 · Hai kênh tương tác gần nhất</h2>
-          <p class="panel__hint">Thứ tự có ý nghĩa</p>
-        </div>
+      {% endif %}
 
-        <div class="panel__body">
-          <div class="field-grid field-grid--pair">
-            {% include 'partials/field_touchpoint.html' with name='step_2_channel' label='Kênh trước kênh cuối' hint='Điểm chạm đứng ngay trước kênh cuối cùng.' %}
-            {% include 'partials/field_touchpoint.html' with name='step_1_channel' label='Kênh tương tác cuối cùng' hint='Điểm chạm mới nhất khách hàng đã dùng.' %}
+      {% if registry_status and not registry_status.ready %}
+        <div class="notice notice--warn" style="margin-bottom: var(--sp-4);" role="status">
+          <span aria-hidden="true" style="font-weight: 700;">!</span>
+          <div>
+            <p class="notice__title">Mô hình chưa sẵn sàng</p>
+            <p class="notice__body">
+              {{ registry_status.message }} Bạn vẫn có thể điền và kiểm tra biểu
+              mẫu; kết quả dự báo sẽ hiện sau khi bộ mô hình nạp xong.
+            </p>
           </div>
         </div>
-      </fieldset>
-    </div>
-    {% comment %}
-      Actions. The submit button keeps its width when loading: the label dims
-      instead of vanishing, so the row never reflows on click.
-    {% endcomment %}
-    <div class="actions" style="margin-top: var(--sp-4);">
-      <button type="submit" class="btn btn--accent" data-submit>
-        <span class="spinner" data-spinner hidden aria-hidden="true"></span>
-        <span data-submit-label>Chạy dự báo</span>
-      </button>
+      {% endif %}
 
-      <a class="btn btn--quiet" href="{% url 'predict' %}" data-reset>Xóa và làm lại</a>
+      {% comment %} The form works without JavaScript; app.js only adds affordances. {% endcomment %}
+      <form method="post" action="{% url 'predict' %}" id="prediction-form" novalidate>
+        {% csrf_token %}
 
-      <p class="muted" style="font-size: var(--step--1); margin: 0;">
-        Kết quả dùng dữ liệu mô phỏng, không phải khuyến nghị thực tế.
-      </p>
-    </div>
-  </form>
-    {# Results. Focusable and scroll-margined so the jump clears the masthead. #}
-  {% if prediction %}
-    <section id="prediction-results" class="results" tabindex="-1" aria-labelledby="results-title"
-             style="margin-top: var(--s-7); scroll-margin-top: 6rem;">
-
-      <hr class="rule" style="margin-bottom: var(--s-6);">
-
-      <div class="section-head">
-        <h2 class="section-head__title" id="results-title">Kết quả</h2>
-        <p class="section-head__body muted">
-          Phân khúc được gán và ba điểm chạm có xác suất cao nhất trong
-          {{ prediction.distribution|length }} ứng viên.
-        </p>
-      </div>
-        {# Assigned segment, plus an explanation when the profile is noise. #}
-      <div class="panel panel--accent" style="margin-bottom: var(--sp-3);">
-        <div class="panel__head">
-          <h3 class="panel__title">Phân khúc được gán</h3>
-          <span class="badge {% if prediction.is_noise %}badge--warn{% else %}badge--primary{% endif %}">
-            Cụm {{ prediction.cluster_id }}
+        {% comment %}
+          Completion meter. Twelve required fields is enough to abandon
+          halfway, so the count is real feedback rather than decoration. It is
+          derived from live form state, and without JavaScript it simply stays
+          at its initial value instead of lying about completion.
+        {% endcomment %}
+        <div class="form-progress" data-progress style="margin-bottom: var(--sp-3);">
+          <span class="form-progress__count" data-progress-count>0 / 12</span>
+          <span class="form-progress__track" aria-hidden="true">
+            <span class="form-progress__fill" data-progress-fill></span>
           </span>
+          <span class="muted" data-progress-hint>chưa nhập</span>
         </div>
-        <div class="panel__body">
-          <div class="stack">
+
+        <div class="stack">
+          {% comment %}
+            Ten clustering inputs, ordered the way an analyst reasons about a
+            household: who they are, then the household, then their economic
+            position, then life stage. The previous order interleaved the
+            numbers with the selects for no reason.
+          {% endcomment %}
+          <fieldset class="panel" style="margin: 0; padding: 0;">
+            <div class="panel__head">
+              <h2 class="panel__title">01 — Hồ sơ khách hàng</h2>
+              <p class="panel__hint">10 biến cho tổng phân cụm</p>
+            </div>
+            <div class="panel__body">
+              <div class="field-grid">
+                {% include 'partials/field_number.html' with name='Age' label='Tuổi' min=0 max=120 hint='Số nguyên từ 0 đến 120.' %}
+                {% include 'partials/field_select.html' with name='GenderID' label='Giới tính' options=genders hint='Mã 1 hoặc 2.' %}
+                {% include 'partials/field_select.html' with name='SPSS_Regio5' label='Vùng địa lý' options=regions %}
+                {% include 'partials/field_number.html' with name='BAS_huishoudgrootte' label='Quy mô hộ gia đình' min=1 max=30 hint='Tổng số người trong hộ.' %}
+                {% include 'partials/field_number.html' with name='afg_kinderen_huishouden' label='Số trẻ em trong hộ' min=0 max=30 hint='Nhập 0 nếu không có trẻ em.' %}
+                {% include 'partials/field_select.html' with name='BAS_werkzaamheid_resp' label='Tình trạng việc làm' options=jobs %}
+                {% include 'partials/field_select.html' with name='BAS_bruto_jaarinkomen' label='Tổng thu nhập hộ năm' options=incomes %}
+                {% include 'partials/field_select.html' with name='BAS_voltooide_opleiding8_resp' label='Trình độ học vấn' options=educations %}
+                {% include 'partials/field_select.html' with name='AFG_sk2015' label='Tầng lớp xã hội (CBS 2015)' options=social_classes %}
+                {% include 'partials/field_select.html' with name='SPSS_Lifestage' label='Giai đoạn cuộc sống' options=lifestages %}
+              </div>
+            </div>
+          </fieldset>
+
+          {% comment %} The two most recent touchpoints; order is significant. {% endcomment %}
+          <fieldset class="panel" style="margin: 0; padding: 0;">
+            <div class="panel__head">
+              <h2 class="panel__title">02 — Hai kênh tương tác gần nhất</h2>
+              <p class="panel__hint">Thứ tự có ý nghĩa</p>
+            </div>
+            <div class="panel__body">
+              <div class="field-grid field-grid--pair">
+                {% include 'partials/field_touchpoint.html' with name='step_2_channel' label='Kênh trước kênh cuối' hint='Điểm chạm đúng ngay trước kênh cuối cùng.' %}
+                {% include 'partials/field_touchpoint.html' with name='step_1_channel' label='Kênh tương tác cuối cùng' hint='Điểm chạm mới nhất khách hàng đã dùng.' %}
+              </div>
+            </div>
+          </fieldset>
+        </div>
+
+        {% comment %}
+          The submit button keeps its width when loading: the label dims in
+          place instead of vanishing, so the row never reflows on click.
+        {% endcomment %}
+        <div class="actions" style="margin-top: var(--sp-4);">
+          <button type="submit" class="btn btn--accent" data-submit>
+            <span class="spinner" data-spinner hidden aria-hidden="true"></span>
+            <span class="btn__label" data-submit-label>Chạy dự báo</span>
+          </button>
+
+          <a class="btn btn--quiet" href="{% url 'predict' %}" data-reset>Xoá và làm lại</a>
+
+          <p class="muted" style="font-size: var(--t-xs);">
+            <span class="kbd">Ctrl</span> + <span class="kbd">↵</span> để chạy ·
+            kết quả dùng dữ liệu mô phỏng
+          </p>
+        </div>
+      </form>
+    </div>
+
+    {# ---------------------------------------------------------------- #}
+    {# Right column: the answer, or what to expect when there is none.    #}
+    {# ---------------------------------------------------------------- #}
+    <div class="console__rail">
+      {% if prediction %}
+        <section id="prediction-results" class="panel panel--accent" tabindex="-1"
+                 aria-labelledby="results-title">
+
+          <div class="panel__head">
+            <h2 class="panel__title" id="results-title">Kết quả</h2>
+            <span class="panel__hint badge {% if prediction.is_noise %}badge--warn{% else %}badge--primary{% endif %}">
+              Cụm {{ prediction.cluster_id }}
+            </span>
+          </div>
+
+          <div class="panel__body answer">
+            {% comment %}
+              The one large number on the page: how much probability mass the
+              three recommendations actually hold. A 27% top-three is a very
+              different thing from a 91% one, and the individual bars do not
+              make that legible on their own.
+            {% endcomment %}
+            <div class="readout">
+              <span class="readout__value">{{ prediction.confidence|floatformat:1 }}<small>%</small></span>
+              <span class="readout__label">độ tin cậy ba gợi ý</span>
+            </div>
+
             <div>
-              <h3 style="margin-bottom: var(--sp-2); font-size: var(--t-md);">
-                {{ prediction.cluster_label }}
-                <span class="muted" style="font-weight: 400;">— {{ prediction.cluster_name }}</span>
-              </h3>
-              <p class="muted" style="margin-bottom: 0; font-size: var(--t-xs);">{{ prediction.cluster_description }}</p>
+              <div class="answer__head">
+                <div>
+                  <p class="answer__title">{{ prediction.cluster_label }}</p>
+                  <p class="answer__sub">{{ prediction.cluster_name }}</p>
+                </div>
+              </div>
+              <p class="answer__desc">{{ prediction.cluster_description }}</p>
             </div>
 
             {% if prediction.is_noise %}
               <div class="notice notice--warn">
                 <span aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4.5v4"/><circle cx="8" cy="11.5" r=".9" fill="currentColor" stroke="none"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                       stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                    <path d="M8 4.5v4"/><circle cx="8" cy="11.5" r=".9" fill="currentColor" stroke="none"/>
+                  </svg>
                 </span>
                 <div>
                   <p class="notice__title">Hồ sơ nằm ngoài phạm vi mô hình</p>
                   <p class="notice__body">
                     Khoảng cách tới cụm lõi gần nhất là
-                    <span class="mono">{{ prediction.noise_distance_value }}</span>, vượt ngưỡng
-                    chấp nhận của DBSCAN. Xác suất bên dưới vẫn được tính nhưng chỉ
-                    mang tính tham khảo — nên thu thập thêm tương tác thay vì chạy
-                    chiến dịch.
+                    <span class="mono">{{ prediction.noise_distance_value }}</span>, vượt
+                    ngưỡng chấp nhận của DBSCAN. Xác suất bên dưới vẫn được tính
+                    nhưng chỉ mang tính tham khảo — nên thu thập thêm tương tác
+                    thay vì chạy chiến dịch.
                   </p>
                 </div>
               </div>
             {% endif %}
+
+            {% comment %}
+              Ranked candidates. The hairline on every track sits at the same
+              place -- the cumulative top-three share -- so the three bars can
+              be compared against one reference instead of each in isolation.
+              Values are locale-independent; see the header note.
+            {% endcomment %}
+            <div>
+              <h3 style="font-size: var(--t-sm); font-weight: 600; margin-bottom: var(--sp-2);">
+                Ba điểm chạm tiếp theo
+              </h3>
+
+              {% comment %}
+                One stacked bar showing how the whole distribution splits
+                between the three shown and everything else.
+
+                An earlier revision put a reference hairline at the top-three
+                cumulative position on each of the three tracks. That was
+                wrong and was removed: the three bars are separate channels,
+                not segments of one bar, so a mark at 49.6% on each of them
+                touched none of them and read as a rendering artefact. Stating
+                the split once, on a bar that genuinely is stacked, says the
+                same thing without the ambiguity.
+              {% endcomment %}
+              <div class="mass">
+                <span class="mass__fill" style="--share: {{ prediction.confidence_value }}%;"></span>
+              </div>
+              <p class="mass__legend">
+                Ba gợi ý chiếm <strong>{{ prediction.confidence|floatformat:1 }}%</strong>;
+                {{ prediction.tail_probability|floatformat:1 }}% còn lại rải rác trong
+                {{ prediction.tail_candidates }} ứng viên khác.
+              </p>
+
+              <ol class="meters" style="margin-top: var(--sp-3);">
+                {% for channel in prediction.channels %}
+                  <li class="meter__row">
+                    <div class="meter__head">
+                      <span class="meter__name">
+                        <span class="meter__rank" aria-hidden="true">{{ forloop.counter }}</span>
+                        <span>{{ channel.name }}</span>
+                        <span class="meter__code">#{{ channel.channel_id }}</span>
+                      </span>
+                      <span class="meter__value" data-count-to="{{ channel.probability_value }}">
+                        {{ channel.probability|floatformat:2 }}%
+                      </span>
+                    </div>
+
+                    <div class="meter__track" role="img"
+                         aria-label="Xác suất {{ channel.probability|floatformat:1 }} phần trăm">
+                      <div class="meter__fill" data-fill="{{ channel.probability_value }}"
+                           style="--final: {{ channel.probability_value }}%;"></div>
+                    </div>
+
+                    <p class="meter__note">{{ channel.description }}</p>
+                  </li>
+                {% empty %}
+                  <li class="notice notice--warn">
+                    <span aria-hidden="true" style="font-weight: 700;">!</span>
+                    <div>
+                      <p class="notice__title">Không có điểm chạm nào để hiển thị</p>
+                      <p class="notice__body">Mô hình không trả về ứng viên nào cho hồ sơ này.</p>
+                    </div>
+                  </li>
+                {% endfor %}
+              </ol>
+            </div>
+
+            <div class="answer__foot">
+              <span>
+                Xác suất tính trên
+                <strong>{{ prediction.distribution|length }}</strong>
+                điểm chạm, giữ {{ prediction.channels|length }} điểm cao nhất.
+              </span>
+            </div>
+          </div>
+        </section>
+      {% else %}
+        {% comment %}
+          Empty state. It says what the form produces rather than filling the
+          column with decoration, so the rail is never dead space.
+        {% endcomment %}
+        <div class="empty">
+          <p class="empty__title">Chưa có kết quả</p>
+          <p class="empty__body">
+            Điền đủ mười hai trường bên trái rồi chạy dự báo. Kết quả sẽ hiện
+            ngay tại đây.
+          </p>
+          <div class="empty__list">
+            <p class="empty__item"><b>01</b><span>Dự báo phân khúc theo vector riêng của từng cụm.</span></p>
+            <p class="empty__item"><b>02</b><span>Xếp hạng toàn bộ {{ touchpoint_count|default:20 }} điểm chạm theo xác suất.</span></p>
+            <p class="empty__item"><b>03</b><span>Giữ ba điểm cao nhất kèm mô tả hành vi.</span></p>
           </div>
         </div>
-      </div>
-
-      {# Ranked candidates. Values are locale-independent; see the header note. #}
-      <h3 style="margin-bottom: var(--sp-2); font-size: var(--t-sm);">Ba điểm chạm tiếp theo</h3>
-
-      <ol class="meter">
-        {% for channel in prediction.channels %}
-          <li class="meter__row">
-            <div class="meter__head">
-              <span class="meter__name">
-                <span class="meter__rank" aria-hidden="true">{{ forloop.counter }}</span>
-                <span>{{ channel.name }}</span>
-                <span class="meter__code">#{{ channel.channel_id }}</span>
-              </span>
-              <span class="meter__value" data-count-to="{{ channel.probability_value }}">
-                {{ channel.probability|floatformat:2 }}%
-              </span>
-            </div>
-
-            <div class="meter__track" role="img"
-                 aria-label="Xác suất {{ channel.probability|floatformat:1 }} phần trăm">
-              <div class="meter__fill" data-fill="{{ channel.probability_value }}"
-                   style="--final: {{ channel.probability_value }}%;"></div>
-            </div>
-
-            <p class="meter__note">{{ channel.description }}</p>
-          </li>
-        {% empty %}
-          <li class="notice notice--warn">
-            <span aria-hidden="true" style="font-weight: 700;">!</span>
-            <div>
-              <p class="notice__title">Không có điểm chạm nào để hiển thị</p>
-              <p class="notice__body">Mô hình không trả về ứng viên nào cho hồ sơ này.</p>
-            </div>
-          </li>
-        {% endfor %}
-      </ol>
-
-      <p class="muted" style="font-size: var(--step--1); margin-top: var(--s-5); max-width: var(--measure);">
-        Ba điểm chạm trên chiếm
-        <strong style="color: var(--ink-800);">{{ prediction.confidence|floatformat:1 }}%</strong>
-        tổng xác suất dự báo. Phần còn lại rơi vào các ứng viên khác.
-      </p>
-
-    </section>
-  {% endif %}
-
+      {% endif %}
+    </div>
+  </div>
 </div>
 {% endblock %}

@@ -68,3 +68,26 @@ def decimal(value: Any, places: int = 3) -> str:
         return f"{float(value):.{int(places)}f}"
     except (TypeError, ValueError):
         return ""
+
+
+@register.filter
+def get_item(mapping: Mapping[str, Any] | None, key: Any) -> str:
+    """Look ``key`` up in ``mapping``, returning ``""`` when absent.
+
+    Needed because the model registry reports a *reason per artefact*: a 403,
+    an absent file and a scikit-learn version clash all land in
+    ``status.missing``, and each needs a different remedy. Rendering that
+    reason next to the filename it belongs to means indexing a dict from a
+    template, and Django's dot syntax only does literal keys on the object it
+    is given — not a variable lookup into a mapping.
+
+    A missing key yields ``""`` rather than raising, because the caller is
+    iterating a *different* list (``missing``) than the one the mapping was
+    built from, and a file can legitimately be absent with no recorded error.
+    """
+    if not mapping:
+        return ""
+    try:
+        return mapping.get(key) or ""
+    except AttributeError:
+        return ""

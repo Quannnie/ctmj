@@ -1,158 +1,345 @@
 {% extends 'base.html' %}
 
 {% comment %}
-  Analyst console, not a marketing page.
+  Overview console.
 
-  The previous revision used a large display hero and generous whitespace —
-  the visual grammar of a landing page — for what is a data tool. The
-  ui-ux-pro-max design system resolved this to "Data-Dense Dashboard /
-  Minimalism & Swiss" at density 8/10, so this page leads with the working
-  numbers, keeps the type small, and drops the decorative furniture.
+  Two earlier revisions of this page failed for the same reason: they were
+  marketing pages. A display hero, generous whitespace and decorative
+  furniture for what is an instrument an analyst opens to read a state off.
+  The working numbers lead instead, the type stays small, and the only large
+  element on the page is the one number an operator actually needs on arrival:
+  is the model loaded, and how much of it.
 {% endcomment %}
 
 {% block content %}
 
-{% comment %} Masthead band: working context, not a tagline. {% endcomment %}
-<section class="page" style="padding-block: var(--sp-5) var(--sp-4);">
-  <div class="split">
+{% comment %}
+  Console head. The split is carried by the state readout on the right, which
+  is live data — not by an explainer paragraph floating in the second column,
+  which is the layout pattern that reads as filler.
+{% endcomment %}
+<section class="page" style="padding-block: var(--sp-7) var(--sp-5);">
+  <div class="split-head">
     <div>
-      <p class="label label--primary">CJPS · Customer Journey Prediction</p>
-      <h1 style="margin-bottom: var(--sp-2);">Dự báo bước tiếp theo trong hành trình</h1>
-      <p class="lede" style="margin-bottom: 0;">
-        Nhập hồ sơ nhân khẩu học và hai kênh tương tác gần nhất. Hệ thống gán
+      <p class="label label--primary">CJPS · Hệ thống dự báo</p>
+      <h1 class="page-title">Dự báo bước tiếp theo trong hành trình</h1>
+      <p class="lede">
+        Nhập hồ sơ khách hàng và hai kênh tương tác gần nhất. Hệ thống gán
         phân khúc, sau đó trả về ba điểm chạm có xác suất cao nhất kèm mô tả
-        hành vi.
+        vì sao.
       </p>
+      <div class="actions" style="margin-top: var(--sp-4);">
+        <a class="btn btn--accent" href="{% url 'predict' %}">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2.5 8h11M9 3.5 13.5 8 9 12.5"/>
+          </svg>
+          Chạy dự báo
+        </a>
+        <a class="btn btn--ghost" href="#pipeline">Xem quy trình</a>
+      </div>
     </div>
 
-    <div class="panel">
+    {% comment %}
+      The page's single large readout. A state word is worth far more at a
+      glance than any summary statistic, so it takes the only big number slot
+      on the page.
+    {% endcomment %}
+    <aside class="panel split-head__aside">
       <div class="panel__head">
-        <h2 class="panel__title">Quy trình</h2>
+        <h2 class="panel__title">Trạng thái</h2>
+        {% if registry_status %}
+          <span class="panel__hint">
+            <span class="dot {% if registry_status.ready %}dot--ok dot--pulse{% elif registry_status.state.value == 'loading' %}dot--warn dot--pulse{% elif registry_status.state.value == 'failed' %}dot--danger{% else %}dot--warn{% endif %}"></span>
+          </span>
+        {% endif %}
       </div>
       <div class="panel__body">
-        <ol class="steps">
-          <li>
-            <span class="steps__index" aria-hidden="true">01</span>
-            <div>
-              <span class="steps__title">Phân cụm</span>
-              <span class="steps__body">DBSCAN lọc nhiễu, Spectral Clustering gán cụm.</span>
-            </div>
-          </li>
-          <li>
-            <span class="steps__index" aria-hidden="true">02</span>
-            <div>
-              <span class="steps__title">Dự báo</span>
-              <span class="steps__body">Gradient Boosting xếp hạng {{ touchpoint_count|default:"20" }} điểm chạm.</span>
-            </div>
-          </li>
-        </ol>
+        {% if registry_status %}
+          <div class="readout">
+            <span class="readout__value" style="font-size: var(--t-lg); color: var(--ink);">
+              {% if registry_status.ready %}Sẵn sàng
+              {% elif registry_status.state.value == 'loading' %}Đang nạp
+              {% elif registry_status.state.value == 'failed' %}Lỗi nạp
+              {% else %}Chưa sẵn sàng{% endif %}
+            </span>
+            <span class="readout__label">
+              {% if registry_status.ready %}
+                {{ registry_status.loaded|length }} / 5 artefact đã nạp
+              {% else %}
+                {{ registry_status.missing|length }} artefact còn thiếu
+              {% endif %}
+            </span>
+          </div>
+          {% comment %}
+            The status message only earns its place when something is wrong --
+            "Mô hình sẵn sàng." directly under a readout that already says
+            "Sẵn sàng" says it twice and adds nothing. When healthy, the useful
+            fact is where the artefacts came from.
+          {% endcomment %}
+          <p class="muted" style="font-size: var(--t-sm); margin-top: var(--sp-3);">
+            {% if registry_status.ready %}
+              Nạp từ nguồn <span class="mono">{{ registry_status.source|default:"auto" }}</span>
+              lúc khởi động tiến trình.
+            {% else %}
+              {{ registry_status.message }}
+            {% endif %}
+          </p>
+        {% else %}
+          <p class="muted" style="font-size: var(--t-sm);">Không có bộ đăng ký mô hình.</p>
+        {% endif %}
       </div>
-    </div>
+    </aside>
   </div>
 </section>
 
-<hr class="rule">
-
-{% comment %} Facts first, at a glance. {% endcomment %}
-<section class="page" style="padding-block: var(--sp-4);">
-  <dl class="kpi-row" style="margin: 0;" data-reveal>
-    <div class="kpi">
-      <dd class="kpi__value">{{ touchpoint_count|default:"—" }}</dd>
-      <dt class="kpi__label">điểm chạm</dt>
+{% comment %} Facts first: one measurement, hairline-separated, not four floating cards. {% endcomment %}
+<section class="page" style="padding-bottom: var(--sp-6);">
+  <dl class="facts" data-reveal>
+    <div class="fact">
+      <dd class="fact__value">{{ touchpoint_count|default:"-" }}</dd>
+      <dt class="fact__label">điểm chạm</dt>
     </div>
-    <div class="kpi">
-      <dd class="kpi__value">{{ cluster_count|default:"—" }}</dd>
-      <dt class="kpi__label">phân khúc</dt>
+    <div class="fact">
+      <dd class="fact__value">{{ cluster_count|default:"-" }}</dd>
+      <dt class="fact__label">phân khúc</dt>
     </div>
-    <div class="kpi">
-      <dd class="kpi__value">3</dd>
-      <dt class="kpi__label">gợi ý mỗi lần</dt>
+    <div class="fact">
+      <dd class="fact__value">10</dd>
+      <dt class="fact__label">biến hồ sơ</dt>
     </div>
-    <div class="kpi">
-      <dd class="kpi__value">2</dd>
-      <dt class="kpi__label">kênh gần nhất</dt>
+    <div class="fact">
+      <dd class="fact__value">12</dd>
+      <dt class="fact__label">trường nhập</dt>
     </div>
-    <div class="kpi">
-      <dd class="kpi__value">10</dd>
-      <dt class="kpi__label">biến hộ sơ</dt>
+    <div class="fact">
+      <dd class="fact__value">3</dd>
+      <dt class="fact__label">gợi ý mỗi lần</dt>
+    </div>
+    <div class="fact">
+      <dd class="fact__value">4</dd>
+      <dt class="fact__label">bước xử lý</dt>
     </div>
   </dl>
 </section>
 
-{% comment %} Use cases — a reference table, not marketing cards. {% endcomment %}
-<section class="page" style="padding-block: var(--sp-4) var(--sp-5);">
+{% comment %}
+  The segments themselves. The previous revision rendered the number 3 and no
+  names, which is the least useful thing this page could say: an analyst
+  cannot act on a count, but they can act on "which segment is this household
+  in, and what does that segment look like".
+{% endcomment %}
+<section class="page" style="padding-bottom: var(--sp-6);" id="segments">
   <div class="section-head" data-reveal>
-    <h2 class="section-head__title">Cách dùng kết quả</h2>
-    <p class="section-head__body muted">
-      Mỗi dự báo trả về một phân khúc và ba điểm chạm kèm xác suất.
+    <h2 class="section-head__title">Ba phân khúc hành vi</h2>
+    <p class="section-head__body">
+      Kết quả của bước gán phân khúc. Mỗi hồ sơ được xếp vào đúng một nhóm
+      theo vector riêng của cụm, hoặc bị đánh dấu nhiễu nếu nằm ngoài mọi cụm lõi.
     </p>
   </div>
 
-  <div class="panel" data-reveal>
-    <table class="spec">
-      <caption class="visually-hidden">Ba cách dùng kết quả dự báo</caption>
-      <thead class="visually-hidden">
-        <tr><th scope="col">Mục đích</th><th scope="col">Cách dùng</th><th scope="col">Tín hiệu</th></tr>
-      </thead>
-      <tbody>
-        <tr>
-          <th scope="row">Sắp xếp ngân sách</th>
-          <td>Đọc mã cụm cùng mô tả phân khúc trước khi phân bổ ngân sách theo phân khúc.</td>
-          <td class="mono">cụm 0 – 2</td>
-        </tr>
-        <tr>
-          <th scope="row">Chọn kênh tiếp cận</th>
-          <td>Phân biệt điểm chạm chủ động (tìm kiếm, website, app) với điểm chạm bị đẩy (banner, email, retargeting).</td>
-          <td class="mono">mã #12, #15, #21</td>
-        </tr>
-        <tr>
-          <th scope="row">Sàng lọc hồ sơ</th>
-          <td>Phân khúc nhiễu nghĩa là hồ sơ nằm ngoài phạm vi mô hình: chuyển sang nuôi dưỡng thay vì chạy chiến dịch.</td>
-          <td class="mono">cụm −1</td>
-        </tr>
-      </tbody>
-    </table>
+  <div class="segments">
+    {% for segment in segments %}
+      <article class="segment" data-reveal style="--reveal-delay: {{ forloop.counter0 }}00ms;">
+        <div class="segment__top">
+          <span class="segment__id">{{ segment.cluster_id }}</span>
+          <span class="segment__label">{{ segment.label }}</span>
+        </div>
+        <p class="segment__name">{{ segment.name }}</p>
+        <p class="segment__body">{{ segment.description }}</p>
+      </article>
+    {% endfor %}
+
+    {% if noise_segment %}
+      {% comment %}
+        DBSCAN noise is a result, not a failure, so it gets a dashed ghost row
+        outside the grid rather than a fourth card that would imply a fourth
+        behavioural segment.
+      {% endcomment %}
+      <article class="segment segment--noise" data-reveal>
+        <span class="segment__id">{{ noise_segment.cluster_id }}</span>
+        <div>
+          <p class="segment__label">{{ noise_segment.label }} — khoảng cách tới cụm lõi vượt ngưỡng <span class="mono">eps</span></p>
+          <p class="segment__body" style="margin-top: var(--sp-1);">{{ noise_segment.description }}</p>
+        </div>
+      </article>
+    {% endif %}
   </div>
 </section>
 
-{% comment %} Pipeline — single source of truth, shared with the predict page. {% endcomment %}
-<section class="page" id="pipeline" style="padding-block: var(--sp-4) var(--sp-5);">
+{% load ctmj_tags %}
+{% comment %}
+  Model state, per artefact. The loader records a reason per file rather than a
+  bare "missing" list, because a 403, an absent file and a scikit-learn version
+  clash all surface as "missing" and have three different fixes.
+{% endcomment %}
+{% if registry_status %}
+<section class="page" style="padding-bottom: var(--sp-6);">
+  <div class="section-head" data-reveal>
+    <h2 class="section-head__title">Mô hình và nguồn dữ liệu</h2>
+    <p class="section-head__body">
+      Năm artefact được nạp lúc khởi động tiến trình. Trạng thái chi tiết,
+      kèm lý do cho từng tệp nạp hỏng, cũng trả về dạng JSON tại
+      <a href="{% url 'health' %}" style="color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px;">/health/</a>.
+    </p>
+  </div>
+
+  {% comment %}
+    A healthy set gets a compact list, not a table. The table exists to carry a
+    per-file *reason* -- a 403, an absent file and a scikit-learn version clash
+    all surface as "missing" and each needs a different remedy -- so a table of
+    five identical "loaded" rows was five repetitions of a sentence that says
+    nothing. The table appears when there is something in it to say.
+  {% endcomment %}
+  {% if registry_status.missing %}
+    <div class="panel" data-reveal>
+      <div class="panel__body">
+        <table class="spec">
+          <caption class="visually-hidden">Trạng thái từng artefact mô hình</caption>
+          <thead class="visually-hidden">
+            <tr><th scope="col">Artefact</th><th scope="col">Lý do</th><th scope="col">Trạng thái</th></tr>
+          </thead>
+          <tbody>
+            {% for filename in registry_status.loaded %}
+              <tr>
+                <th scope="row" class="mono">{{ filename }}</th>
+                <td>Đã nạp vào bộ nhớ.</td>
+                <td><span class="badge badge--ok">Đã nạp</span></td>
+              </tr>
+            {% endfor %}
+            {% for filename in registry_status.missing %}
+              <tr>
+                <th scope="row" class="mono">{{ filename }}</th>
+                <td>{% with reason=registry_status.errors|get_item:filename %}{% if reason %}{{ reason }}{% else %}Chưa tìm thấy tệp ở nguồn cấu hình.{% endif %}{% endwith %}</td>
+                <td><span class="badge badge--warn">Thiếu</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% else %}
+    <div class="panel" data-reveal>
+      <div class="panel__head">
+        <h3 class="panel__title">{{ registry_status.loaded|length }} artefact đã nạp</h3>
+        <span class="panel__hint badge badge--ok">
+          <span class="dot dot--ok" aria-hidden="true"></span> sẵn sàng
+        </span>
+      </div>
+      <div class="panel__body">
+        <ul class="artefacts">
+          {% for filename in registry_status.loaded %}
+            <li class="artefact"><span class="mono">{{ filename }}</span></li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% comment %} Pipeline as a flow, not a four-row specification table. {% endcomment %}
+<section class="page" id="pipeline" style="padding-bottom: var(--sp-6);">
   <div class="section-head" data-reveal>
     <h2 class="section-head__title">Quy trình xử lý</h2>
-    <p class="section-head__body muted">
+    <p class="section-head__body">
       Bốn bước, hai mô hình, chạy hoàn toàn trong bộ nhớ.
     </p>
   </div>
 
-  <div class="panel" data-reveal>
-    <div class="panel__body">
-      {% include 'partials/pipeline_table.html' %}
-    </div>
-  </div>
+  <ol class="stages" data-reveal>
+    <li class="stage">
+      <span class="stage__marker" aria-hidden="true"></span>
+      <span class="stage__index">BƯỚC 01</span>
+      <h3 class="stage__title">Thu thập</h3>
+      <p class="stage__algo">KNNImputer</p>
+      <p class="stage__body">
+        Mười biến hồ sơ cùng hai kênh tương tác gần nhất. Ô trống được nội
+        suy từ những hồ sơ giống nhau thay vì bị loại bỏ.
+      </p>
+    </li>
+    <li class="stage">
+      <span class="stage__marker" aria-hidden="true"></span>
+      <span class="stage__index">BƯỚC 02</span>
+      <h3 class="stage__title">Lọc nhiễu</h3>
+      <p class="stage__algo">DBSCAN</p>
+      <p class="stage__body">
+        Đo khoảng cách tới các cụm lõi. Hồ sơ nằm xa mọi cụm lõi quá ngưỡng
+        <span class="mono">eps</span> bị gán nhãn nhiễu và không đi tiếp.
+      </p>
+    </li>
+    <li class="stage">
+      <span class="stage__marker" aria-hidden="true"></span>
+      <span class="stage__index">BƯỚC 03</span>
+      <h3 class="stage__title">Gán phân khúc</h3>
+      <p class="stage__algo">SpectralClustering</p>
+      <p class="stage__body">
+        Với hồ sơ còn lại, so vector đã chuẩn hóa với vector riêng của từng cụm;
+        cụm gần nhất là phân khúc của hồ sơ.
+      </p>
+    </li>
+    <li class="stage">
+      <span class="stage__marker" aria-hidden="true"></span>
+      <span class="stage__index">BƯỚC 04</span>
+      <h3 class="stage__title">Dự báo</h3>
+      <p class="stage__algo">GradientBoosting</p>
+      <p class="stage__body">
+        Nhận hồ sơ cùng mã phân khúc, trả về xác suất cho toàn bộ điểm chạm.
+        Hệ thống giữ ba điểm cao nhất.
+      </p>
+    </li>
+  </ol>
 </section>
 
-{% comment %} Operational state, stated plainly. {% endcomment %}
-{% if registry_status %}
-<section class="page" style="padding-bottom: var(--sp-5);">
-  <div class="notice {% if registry_status.ready %}notice--ok{% elif registry_status.state.value == 'loading' %}notice--info{% else %}notice--warn{% endif %}">
-    <span aria-hidden="true" style="color: inherit;">
-      {% if registry_status.ready %}
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 8.5 3.5 3.5 7.5-8"/></svg>
-      {% else %}
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4.5v4"/><circle cx="8" cy="11.5" r=".9" fill="currentColor" stroke="none"/></svg>
-      {% endif %}
-    </span>
-    <div>
-      <p class="notice__title">Trạng thái mô hình</p>
-      <p class="notice__body">{{ registry_status.message }}</p>
-      {% if not registry_status.ready %}
-        <p class="notice__body" style="margin-top: var(--sp-2);">
-          <a href="{% url 'predict' %}">Mở trang dự báo</a> để xem hướng dẫn.
+{% comment %}
+  Use cases as a definition list. A card grid would be the third grid on the
+  page; the segment cards and the stage flow have already spent that family.
+{% endcomment %}
+<section class="page" style="padding-bottom: var(--sp-6);">
+  <div class="section-head" data-reveal>
+    <h2 class="section-head__title">Cách dùng kết quả</h2>
+    <p class="section-head__body">
+      Mỗi dự báo trả về một phân khúc và ba điểm chạm kèm xác suất.
+    </p>
+  </div>
+
+  <div class="usecases" data-reveal>
+    <article class="usecase">
+      <span class="usecase__index">01</span>
+      <div>
+        <h3 class="usecase__title">Sắp xếp ngăn sách</h3>
+        <p class="usecase__body">
+          Đọc mã cảm cứng cùng một phân khúc trước khi phân bổ ngân sách theo
+          phân khúc, thay vì chia đều cho mọi nhóm.
         </p>
-      {% endif %}
-    </div>
+      </div>
+      <span class="usecase__signal">cụm 0 – 2</span>
+    </article>
+
+    <article class="usecase">
+      <span class="usecase__index">02</span>
+      <div>
+        <h3 class="usecase__title">Chọn kênh tiếp cận</h3>
+        <p class="usecase__body">
+          Phân biệt điểm chạm chủ động (tìm kiếm, website, app) với điểm chạm
+          bị đẩy (banner, email, retargeting) trước khi lên chiến dịch.
+        </p>
+      </div>
+      <span class="usecase__signal">mã #12, #15, #21</span>
+    </article>
+
+    <article class="usecase">
+      <span class="usecase__index">03</span>
+      <div>
+        <h3 class="usecase__title">Sàng lọc hồ sơ</h3>
+        <p class="usecase__body">
+          Phân khúc nhiễu là nhóm hồ sơ nằm ngoài phạm vi mô hình: chuyển sang
+          nuôi dưỡng thay vì chạy chiến dịch.
+        </p>
+      </div>
+      <span class="usecase__signal">cụm -1</span>
+    </article>
   </div>
 </section>
-{% endif %}
 
 {% endblock %}

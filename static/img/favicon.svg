@@ -1,7 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="CJPS">
-  <rect width="32" height="32" rx="5" fill="#8c2f2a"/>
-  <!-- Three ascending bars: the segmentation -> prediction story in one mark. -->
-  <rect x="7"  y="19" width="4" height="7"  rx="1" fill="#f7f4ee"/>
-  <rect x="14" y="14" width="4" height="12" rx="1" fill="#f7f4ee"/>
-  <rect x="21" y="8"  width="4" height="18" rx="1" fill="#f7f4ee"/>
+  <!--
+    Three ascending bars: the segmentation -> prediction story in one mark.
+    Recoloured to the "Signal" identity -- graphite ground, one lime accent --
+    and to the system's single 3px radius rather than a 5px pill, so the icon
+    and the interface share a shape language instead of merely a palette.
+  -->
+  <rect width="32" height="32" rx="3" fill="#0a0c0b"/>
+  <rect x="6"  y="19" width="5" height="7"  rx="1.5" fill="#b7e24a" opacity="0.5"/>
+  <rect x="13" y="14" width="5" height="12" rx="1.5" fill="#b7e24a" opacity="0.75"/>
+  <rect x="20" y="7"  width="5" height="19" rx="1.5" fill="#b7e24a"/>
 </svg>
