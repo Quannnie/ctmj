@@ -11,6 +11,13 @@ Two stages, both running in memory:
 2. **Next-touchpoint ranking** — a Gradient Boosting classifier scores all 20
    touchpoints and the top three are returned with names and descriptions.
 
+![The prediction console: the household profile on the left, the ranked result on the right](docs/screenshot-predict.png)
+
+*The result rail is sticky, so the profile that produced an answer stays on
+screen next to it. The submitted values here are 41, female, Amsterdam, household
+of 4 with 2 children, average income, and "Generic search" followed by "Email" —
+segment 0, with the top three holding 49.6% of the probability mass.*
+
 ---
 
 ## Quick start
@@ -416,6 +423,12 @@ The accent keeps its fill value in both modes (a lime button carries near-black
 text at 11.6:1 light and 13.1:1 dark) while its *text* role darkens, because
 lime on white is 1.9:1 and unusable as type. A per-mode token value, which is
 what real systems do, rather than shipping one hex that fails in one mode.
+
+![The overview console: model state, the three segments, artefact state and the four-stage pipeline](docs/screenshot-overview.png)
+
+*This is the whole page in one screen, and it is the reason the layout was
+rebuilt: model state leads, the three segments are named rather than counted, and
+the artefact panel only expands into a table when something has failed.*
 
 ### Colour
 
