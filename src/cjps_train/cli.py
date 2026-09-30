@@ -76,6 +76,23 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Candidate cluster counts to score.")
     seg.add_argument("--silhouette-floor", type=float, default=None,
                      help="Below this best-silhouette, fall back to the midpoint k.")
+    seg.add_argument("--spectral-affinity", choices=("rbf", "nearest_neighbors"),
+                     default=None,
+                     help="Graph for the segmenter. 'nearest_neighbors' is a "
+                          "sparse k-NN graph: far faster and a much smaller "
+                          "artefact, but on this feature space it produces a "
+                          "DIFFERENT segmentation (ARI 0.69 at k=10, falling to "
+                          "0.31 at k=200), so it is not the default.")
+    seg.add_argument("--spectral-neighbors", type=int, default=None,
+                     help="Neighbours per point when the sparse graph is used.")
+    seg.add_argument("--verify-spectral", action="store_true", default=None,
+                     dest="verify_spectral_against_dense",
+                     help="Fit the other graph too and record the adjusted Rand "
+                          "index between the partitions. Fits twice, so it is a "
+                          "one-off check rather than the production path.")
+    seg.add_argument("--spectral-agreement-floor", type=float, default=None,
+                     help="Below this ARI, warn that the two graphs are not "
+                          "interchangeable on this data.")
 
     verbosity = parser.add_argument_group("verbosity")
     verbosity.add_argument("-v", "--verbose", action="store_true")
@@ -100,6 +117,10 @@ def config_from_args(args: argparse.Namespace) -> TrainConfig:
         "k_neighbors",
         "k_distance_k",
         "silhouette_floor",
+        "spectral_affinity",
+        "spectral_neighbors",
+        "spectral_agreement_floor",
+        "verify_spectral_against_dense",
     ):
         value = getattr(args, name, None)
         if value is not None:

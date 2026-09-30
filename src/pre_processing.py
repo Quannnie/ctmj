@@ -109,22 +109,25 @@ def _neighbour_indices_among_minority(
         return np.empty((n, 0), dtype=int)
 
     k = max(1, min(k, n - 1))
-    # n neighbours so the self-match is present and can be dropped.
-    idx = NearestNeighbors(n_neighbors=n).fit(X_class).kneighbors(
+
+    # k + 1 candidates, not n.
+    #
+    # The previous version asked the neighbour search for all n neighbours and
+    # then discarded the self-match in a Python loop over every row. Asking for
+    # n makes the search return an n-by-n index array -- quadratic in both time
+    # and memory -- to answer a question about k columns. k + 1 is enough,
+    # because exactly one of them is the point itself.
+    idx = NearestNeighbors(n_neighbors=k + 1).fit(X_class).kneighbors(
         X_class, return_distance=False
     )
 
-    out = np.empty((n, k), dtype=int)
-    for row in range(n):
-        others = idx[row][idx[row] != row]
-        if len(others) == 0:
-            out[row, :] = row
-            continue
-        chosen = others[:k]
-        if len(chosen) < k:
-            chosen = np.concatenate([chosen, np.full(k - len(chosen), chosen[-1])])
-        out[row] = chosen
-    return out
+    # Compaction without a per-row loop: push each row's self-match to the end
+    # with a stable argsort, then slice. Stability matters because ties at
+    # distance zero -- duplicate coordinates -- would otherwise be reordered,
+    # and the caller relies on the remaining order being distance-sorted.
+    is_self = idx == np.arange(n)[:, None]
+    order = np.argsort(is_self, axis=1, kind="stable")
+    return np.take_along_axis(idx, order, axis=1)[:, :k]
 
 
 # ---------------------------------------------------------------------------

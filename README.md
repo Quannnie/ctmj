@@ -286,6 +286,73 @@ essentially all of it, with no single dominant callee — the cost is spread
 across Django's template engine rather than concentrated anywhere worth
 attacking.
 
+The inference path itself was measured and left alone. `assign_cluster` costs
+1.2 ms, almost all of it the noise gate's `cdist` against 7 275 stored core
+samples. That is a single query against 7 275 points, where brute force is
+optimal — a KD-tree would be *slower* for one point. It is not worth
+optimising, and "optimising" it would be a regression.
+
+---
+
+## Training performance
+
+### What was changed
+
+**The neighbour adjacency is no longer quadratic.** `kneighbors` was called
+with `n_neighbors=n` — an n-by-n index array — and then the self-match was
+dropped in a Python loop over every row. To get k neighbours it now asks for
+`k + 1` and compacts with a stable argsort, so the result is n-by-k whatever
+n is:
+
+| n | old index array | new | |
+|---|---|---|---|
+| 2 000 | 30.5 MiB | 0.09 MiB | 333× |
+| 8 000 | 488.3 MiB | 0.37 MiB | 1 333× |
+| 20 000 | 3 051.8 MiB | 0.92 MiB | 3 333× |
+
+This runs per minority class, per fold, per candidate in the benchmark grid, so
+it is squarely in the training hot path.
+
+**DBSCAN fits in parallel.** `n_jobs=-1` on the noise gate: 0.723 s → 0.290 s
+on 8 000 rows. Fit-time only — inference compares one profile against the
+stored core samples.
+
+### What was measured and then *not* changed
+
+The segmenter's dense RBF affinity is 0.45 GiB and a 465 MB artefact at the
+real dataset's 7 807 rows, and it is quadratic. A sparse k-nearest-neighbour
+graph is 3.3× faster, 532× less memory, and makes the artefact 12× smaller
+(73 MiB → 6 MiB end to end).
+
+It was very nearly shipped as the default. On well-separated Gaussian blobs the
+two produce **identical** partitions — ARI 1.000 at k=10, checked across three,
+four and five segments. On the pipeline's own feature space, twenty scaled
+ordinal codes, they do not:
+
+| k | 10 | 15 | 20 | 30 | 50 | 80 | 120 | 200 |
+|---|---|---|---|---|---|---|---|---|
+| ARI vs dense | 0.69 | 0.67 | 0.66 | 0.65 | 0.61 | 0.59 | 0.50 | 0.31 |
+
+Nothing reaches the agreement floor, and agreement falls as k grows. The sparse
+graph is a *different* segmentation, not a faster route to the same one.
+
+It is also not obviously worse — its silhouette is +0.34 against the dense
++0.26 on the same rows. That is the trap: a higher internal metric on a
+different partition is an argument for the different partition, not evidence
+that it is the same one.
+
+So `spectral_affinity` defaults to `"rbf"`, and the sparse option is available
+for a deployment that does not need to reproduce the original partition.
+`--verify-spectral` fits both and writes the adjusted Rand index to the
+manifest, so the trade is recorded rather than assumed. The run that produced
+the table above warned and recorded ARI −0.045 on the fixture, where the
+partition sizes differ visibly: 1986/995 dense against 2433/548 sparse.
+
+One measurement worth recording because it was wrong on the first pass: the
+obvious explanation for the dense path's cost — that computing the affinity is
+expensive — is false. `pairwise_distances` is 2% of the fit. The
+eigendecomposition is the cost, and it is expensive because the matrix is dense.
+
 ---
 
 ## Design
