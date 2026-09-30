@@ -55,18 +55,78 @@ def _lookup_context() -> dict[str, list[dict[str, Any]]]:
     }
 
 
+def _error_items(errors: dict[str, str]) -> list[dict[str, str]]:
+    """Turn the validator's field-keyed errors into linkable rows.
+
+    ``error_summary`` is a flat list of strings, which is the right shape for
+    an aria-live region but useless for navigation: a user told "2 fields need
+    fixing" still has to hunt for them. Each row here carries the field label,
+    the message and the id of the inline error, so the summary can link
+    straight to the control that is wrong.
+
+    Only produced for validation failures. The 503 and 500 paths describe a
+    problem with the server rather than with a field, and have nothing to link
+    to.
+    """
+    return [
+        {
+            "name": name,
+            "label": formdata.FIELD_LABELS.get(name, name),
+            "message": message,
+            "anchor": f"e-{name}",
+        }
+        for name, message in errors.items()
+    ]
+
+
 @require_GET
 def home_view(request: HttpRequest) -> HttpResponse:
-    """Landing page with an honest summary of the model pipeline."""
+    """Overview console: the system, its segments and its model state.
+
+    The segments come from :mod:`reference_data` rather than from a count. The
+    previous revision rendered the number ``3`` and nothing else, which told an
+    analyst nothing they could act on -- the actual segment names and their
+    descriptions are the part of this page worth reading.
+    """
     from ctmj.services import lookups
 
     registry = _registry()
+
+    # The noise entry is a real DBSCAN outcome rather than one of the
+    # behavioural segments, so it is kept out of the segment grid and given
+    # its own row instead of being silently folded into the count.
+    segments = [
+        {
+            "cluster_id": row["cluster_id"],
+            "label": reference_data.CLUSTER_LABELS.get(row["cluster_id"], ""),
+            "name": row["name"],
+            "description": row["description"],
+        }
+        for row in reference_data.CLUSTERS
+        if row["cluster_id"] != predictor.NOISE_LABEL
+    ]
+    noise = next(
+        (
+            {
+                "cluster_id": row["cluster_id"],
+                "label": reference_data.CLUSTER_LABELS.get(row["cluster_id"], "Nhiễu"),
+                "name": row["name"],
+                "description": row["description"],
+            }
+            for row in reference_data.CLUSTERS
+            if row["cluster_id"] == predictor.NOISE_LABEL
+        ),
+        None,
+    )
+
     return render(
         request,
         "home.html",
         {
             "touchpoint_count": lookups.touchpoint_count(),
-            "cluster_count": max(len(reference_data.CLUSTERS) - 1, 0),
+            "cluster_count": len(segments),
+            "segments": segments,
+            "noise_segment": noise,
             "registry_status": registry.status if registry else None,
         },
     )
@@ -92,6 +152,7 @@ def predict_view(request: HttpRequest) -> HttpResponse:
 
     if not validated.is_valid:
         context["error_summary"] = validated.error_messages
+        context["error_items"] = _error_items(validated.errors)
         logger.info("Rejected prediction form: %s", validated.error_messages)
         return render(request, "predict.html", context, status=400)
 

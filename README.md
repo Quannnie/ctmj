@@ -357,21 +357,154 @@ eigendecomposition is the cost, and it is expensive because the matrix is dense.
 
 ## Design
 
-Editorial data-journalism: warm paper ground, one oxblood accent, Fraunces
-against Inter, asymmetric editorial spreads, `tabular-nums` on every figure.
+**"Signal" — a graphite instrument with one lime accent.**
 
-Deliberately absent: gradients, glassmorphism, centred three-card feature rows,
-`window.alert`. Every value is a CSS custom property in `:root`, so the palette
-retunes from one block.
+The brief for this pass was a reference to [OpenStitch](https://github.com/heldernoid/openstitch),
+a local-first developer tool. What that project actually shares with this one is
+not a palette but a *register*: dense, monospace-forward, precise, dark by
+default, built for someone reading numbers rather than browsing. So the system
+was rebuilt on the Linear/Vercel convention — a token layer, one accent,
+hairline separation instead of stacked cards, monospace reserved for anything
+numeric.
 
-Accessibility is handled rather than assumed: a skip link, visible focus rings,
-inline field errors wired through `aria-describedby`, an error summary that
-receives focus on submit, `role="img"` probability tracks with text equivalents,
-decorative icons marked `aria-hidden`, and full `prefers-reduced-motion`
-support.
+Dials: `DESIGN_VARIANCE 6` (offset, not symmetric) / `MOTION_INTENSITY 4`
+(CSS-level, purposeful) / `VISUAL_DENSITY 7` (instrument, not marketing).
 
-The form and results work with JavaScript disabled. `app.js` only adds an
-animated submit state, animated probability counters, and stepper buttons.
+### What changed, and why
+
+**The overview stopped being a landing page.** Two earlier revisions failed the
+same way: a display hero and generous whitespace for what is a tool. It now
+leads with the one number an operator needs on arrival — is the model loaded, and
+how much of it — and everything else is small. The single large element on the
+page is that state word. The other four grid/layout families (fact strip,
+segment cards, stage flow, definition list) are each used once, because
+repeating a layout family three times on one page is what makes a page read as a
+template.
+
+**The segments are named instead of counted.** The page previously rendered the
+number `3` and nothing else. It now lists each segment's label, its English
+name and its description, straight from `reference_data.CLUSTERS`. An analyst
+cannot act on a count; they can act on a segment.
+
+**The artefact table only appears when there is something to explain.** The
+loader records a per-file *reason*, because a 403, an absent file and a
+scikit-learn version clash all surface as `missing` and each needs a different
+remedy. A healthy set therefore gets a compact chip list, and the table
+reserves itself for failures.
+
+**The prediction page became a two-column console.** The form sits left and the
+result in a sticky right rail, so the profile stays on screen next to the answer
+it produced. Previously a submit scrolled the page and the analyst had to
+re-read a form they had already filled correctly. Below 1080px the rail drops
+under the form, because two 190px columns of selects are not a layout anyone can
+use on a laptop in a train.
+
+**The form is two columns, explicitly.** Not `auto-fit` over a min-width, which
+looks tidier in a mockup and worse in use: at this column width it lands on
+three, leaving the tenth field alone on the last row and squeezing the income
+bands into ~190px.
+
+**The error summary links to the field.** `error_summary` is a flat list of
+strings, which is right for an `aria-live` region and useless for navigation.
+`error_items` adds the label, the message and the id of the inline error, so the
+summary can jump straight to the control that is wrong.
+
+**Dark and light both ship.** Dark is the default because the reference is a dark
+instrument and a researcher stares at this for hours; light is a full peer, not
+an afterthought, and follows `prefers-color-scheme` until the user overrides it.
+The accent keeps its fill value in both modes (a lime button carries near-black
+text at 11.6:1 light and 13.1:1 dark) while its *text* role darkens, because
+lime on white is 1.9:1 and unusable as type. A per-mode token value, which is
+what real systems do, rather than shipping one hex that fails in one mode.
+
+### Colour
+
+One accent: a signal lime. The subject of this tool is *measurement*, so a single
+high-luminance hue is reserved for measured values — lime means "this is a
+number the model produced", nothing else. Everything else is a neutral graphite
+ramp. Two semantic colours sit alongside it (danger, warning); they are
+functional rather than decorative, because a form error that is not red is not an
+error, and they are never used for emphasis.
+
+The previous revision used a warm-paper palette (`#f7f4ee` and family). That
+family is the single most recognisable default in AI-generated design, and it
+made a data tool look like a brochure. Replaced, not adjusted.
+
+Contrast is measured, not eyeballed. Every ink value clears WCAG AA against its
+own surface: `--ink` 15.4:1, `--ink-2` 8.4:1, `--ink-3` 5.2:1 on `--bg` in dark;
+18.1:1 / 8.0:1 / 5.0:1 in light. The placeholder was previously drawn at 0.75
+alpha, which put it near 2.8:1 — now full strength.
+
+### Type
+
+Self-hosted **Geist + Geist Mono**, latin / latin-ext / **vietnamese** subsets,
+97 KiB across six files. Previously linked from `fonts.googleapis.com`, which
+meant three things this project cannot accept: the interface is entirely
+Vietnamese and depends on the `U+1EA0-1EF9` subset, so a font CDN that serves a
+different set renders the whole app with fallback diacritics; a research tool
+should not hand every visitor's IP to a third party on page load; and the
+cross-origin stylesheet is render-blocking.
+
+All six files are **variable** fonts (`wght` 100–900, verified with fontTools) —
+Google returns one URL per subset for every requested weight, so downloading a
+file per weight would have downloaded the same bytes four times. Cyrillic and
+greek are omitted; no string in the interface or the reference data uses those
+scripts.
+
+Only the vietnamese subset is preloaded, and that is deliberate. The other five
+are same-origin and are discovered a few milliseconds later from the stylesheet.
+The Vietnamese subset is the one whose absence is *visible*: with
+`font-display: swap` a missing Vietnamese file means every heading renders in a
+fallback and then reflows, and Vietnamese stacks combining diacritics so the swap
+shifts the line.
+
+`tools/fetch_fonts.py` regenerates the stylesheet; `static/css/fonts.css` is
+generated output and should not be hand-edited.
+
+### Shape
+
+One radius, 3px, on every surface and control. Fully-round pills are used only
+for status badges — a rule, not a mixture. Near-square reads as instrument; a
+16px radius reads as consumer app.
+
+### Motion, and one bug worth recording
+
+Scroll-reveal is the only page-level animation, plus the result bars and the
+probability counters. The first version of this pass **shipped content loss**:
+`IntersectionObserver` only fires for elements that scroll into view and the
+sweep backstop only ran on a scroll or resize event, so a page that is never
+scrolled — a full-page screenshot, a print, a headless render, a reader who
+reaches the bottom by keyboard — left every section below the fold at `opacity: 0`.
+A blank half-page. It is now bounded by a 2s safety net that reveals anything
+still pending, and `@media print` forces reveals visible, because print has no
+viewport. Screenshots and print are how this was caught; neither shows up in a
+test suite.
+
+The probability bars carry their final width in a `--final` custom property
+server-side, so **with JavaScript disabled they are already correct** — verified:
+62px / 50px / 42px for 20.1% / 16.0% / 13.5%, identical to the animated result,
+with no layout shift. `app.js` only moves them from zero to that value, skips the
+movement entirely under `prefers-reduced-motion`, and adds a completion meter
+over the twelve required fields plus `Ctrl/Cmd+Enter` to submit and `/` to jump
+to the first field that still needs an answer.
+
+One design decision was measured and then **withdrawn**: a reference hairline at
+the cumulative top-three position, drawn on each of the three meter tracks. The
+three bars are separate channels, not slices of one bar, so a mark at 49.6% on
+each of them touched none of them and read as a rendering artefact. It is now a
+single stacked bar above the meters that genuinely *is* stacked, with the
+remainder and the candidate count in the legend beside it.
+
+Deliberately absent: gradients on surfaces, glassmorphism, centred three-card
+feature rows, `window.alert`, decorative photography. Every value is a CSS
+custom property in `:root`, so the palette retunes from one block. Every
+multi-column layout states its sub-768px fallback in the same rule.
+
+Accessibility is handled rather than assumed: a skip link, visible focus rings
+throughout, inline field errors wired through `aria-describedby`, an error
+summary that receives focus on submit, `role="img"` probability tracks with text
+equivalents, decorative icons marked `aria-hidden`, and full
+`prefers-reduced-motion` support.
 
 ---
 
