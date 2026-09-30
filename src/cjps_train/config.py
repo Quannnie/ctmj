@@ -192,6 +192,43 @@ class TrainConfig:
     #: candidate rather than trusting a meaningless maximum.
     silhouette_floor: float = 0.15
 
+    # --- spectral stage -------------------------------------------------
+    #: Graph used by the segmenter.
+    #:
+    #: ``"rbf"`` is a dense n-by-n affinity: 0.45 GiB and a 465 MB artefact at
+    #: the real dataset's 7 807 rows, quadratic in both time and space.
+    #: ``"nearest_neighbors"`` is a sparse k-NN graph, orders of magnitude
+    #: smaller, and much faster.
+    #:
+    #: The default is ``"rbf"`` and that is a measured decision, not a
+    #: preference. On well-separated Gaussian blobs the two agree exactly
+    #: (ARI 1.000 at k=10, verified over three, four and five segments). On the
+    #: pipeline's own feature space -- twenty scaled ordinal codes, which is a
+    #: different neighbourhood geometry -- they do not:
+    #:
+    #:     k     10     15     20     30     50     80    120    200
+    #:     ARI  0.69   0.67   0.66   0.65   0.61   0.59   0.50   0.31
+    #:
+    #: No setting reaches the agreement floor, and agreement falls as k grows.
+    #: The sparse graph is a *different* segmentation, not a faster route to the
+    #: same one -- and it scores a higher silhouette (+0.34 against +0.26), which
+    #: is precisely why substituting it on the strength of its internal metric
+    #: would be wrong. Set this to ``"nearest_neighbors"`` to trade the
+    #: segmentation for a 12x smaller artefact, and enable the verification below
+    #: so the change is recorded rather than assumed.
+    spectral_affinity: str = "rbf"
+    #: Neighbours per point when ``spectral_affinity`` is ``"nearest_neighbors"``.
+    spectral_neighbors: int = 10
+    #: Only used when ``spectral_affinity`` is ``"rbf"``.
+    spectral_gamma: float = 1.0
+    #: Fit the other graph as well and report the adjusted Rand index between
+    #: the two partitions. It fits twice, so it cannot be the production path;
+    #: it is a one-off check that a substitution is sound for this data.
+    verify_spectral_against_dense: bool = False
+    #: Below this, the run warns that the two graphs are not interchangeable
+    #: here.
+    spectral_agreement_floor: float = 0.90
+
     # --- stage 2 granularity -------------------------------------------
     #: Train one classifier per segment, or one pooled model over all of them.
     #: ``pooled`` is the default: with three segments and imbalanced touchpoints
