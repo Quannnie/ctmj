@@ -1,0 +1,10 @@
+# LSTM pipeline (src/cjps_lstm/) — deep-learning extra.
+# Install with:  pip install -r requirements.txt -r requirements-lstm.txt
+#
+# torch is the deep-learning backend. The CPU wheel is enough — the dataset
+# is ~6k sequences and trains in minutes without a GPU.
+-r requirements.txt
+
+torch>=2.2
+matplotlib>=3.8
+scikit-learn>=1.5

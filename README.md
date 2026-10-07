@@ -235,10 +235,11 @@ ctmj/
   tests/               152 tests, no network, no artefacts required
 src/
   cjps_train/          the production training pipeline (see below)
+  cjps_lstm/           the LSTM sequence-model experiment (see below)
   main.py              the original research script, kept for reference
   pre_processing.py    SMOTE / Tomek / ADASYN, fold-safe wrappers
   eda.py, dataset/     profiling helpers and the Figshare loader
-  tests/               142 tests for everything under src/
+  tests/               tests for everything under src/
 static/css/main.css      design tokens + components, no framework
 static/js/app.js         progressive enhancement only
 templates/               base, home, predict, 404, partials/
@@ -359,6 +360,42 @@ One measurement worth recording because it was wrong on the first pass: the
 obvious explanation for the dense path's cost — that computing the affinity is
 expensive — is false. `pairwise_distances` is 2% of the fit. The
 eigendecomposition is the cost, and it is expensive because the matrix is dense.
+
+---
+
+## LSTM sequence model (`src/cjps_lstm/`)
+
+A second model family on the same prediction contract — predict the last
+touchpoint from the journey before it — built to answer whether sequence
+modelling beats the tabular GBM. It does not touch the app's artefact
+contract; it is a research pipeline, fully offline.
+
+```bash
+pip install -r requirements-lstm.txt          # torch on top of requirements.txt
+python -m src.cjps_lstm.cli --data-dir data   # full run; --quick for a smoke run
+python manage.py test src.tests.test_cjps_lstm
+```
+
+The two CSVs come from Figshare article 23690811 (the same dataset
+`src/eda.py` / `src/dataset/` reference); `data/` is not committed —
+download `A_TravelDataJourneys.csv` and `B_TravelDataUsers.csv` from the
+article page or its API (`api.figshare.com/v2/articles/23690811`).
+
+What it does, in order: compress consecutive identical touchpoints → one
+example per user (sequence = all events but the last, target = the last) →
+fuse demographics on `UserID` → stratified 70/15/15 split → impute/scale/
+encode fitted on train only → pad to the train P95 length → majority and GBM
+baselines → LSTM ablations → random-search tuning on validation → pick the
+fused-vs-sequence-only input variant on validation → refit on train+val →
+one test evaluation → permutation importance → error analysis.
+
+Results and the full report live in `resources/lstm/` (`REPORT.md`,
+`metrics.json`, `model_comparison.csv`, figures). Headline finding: the GBM
+remains the better production model on this dataset (top-3 .89 vs .71); the
+tuned BiLSTM's residual strengths are macro-recall and very long journeys,
+and demographic fusion measurably *hurt* — the selection rule rejected it on
+validation. None of the numbers from the legacy `src/main.py` (resampling
+before CV, no holdout) are comparable.
 
 ---
 
